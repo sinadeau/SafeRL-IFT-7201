@@ -1,5 +1,5 @@
 import gymnasium as gym
-from stable_baselines3 import PPO
+from stable_baselines3 import PPO, DQN
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 
 #---Custom environments---
 
-#Simon
+#Simon 8 x 8 
 desc= [
         "SFFFFFFF",
         "FFFFFFFF",
@@ -25,6 +25,26 @@ desc= [
         "FFFFFFFF",
         "GFFFFFFF"
     ] 
+
+#Notes sur environnement Custom Simon 8x8
+#success_rate=3/4 passe par le plus long chemin
+#success_rate=9.0/10.0 # passe par le chemin intermédiaire
+#success_rate=9.9/10.0 # passe par le chemin le plus court et plus risqué
+
+#Simon 10 x 10
+desc = [
+    "FFFFFFFFFF",
+    "FFFFFFFFFF",
+    "HFHFFFFFFF",
+    "FFFFHFFFFF",
+    "HFFFFFFHFF",
+    "HFFFHFFFFF",
+    "HFFFFFFHFF",
+    "HFHFHFFFFF",
+    "FFFFFFFFFF",
+    "GFFFFFFFFF",
+    ]
+
 
 #Héloïse
 #desc= [
@@ -50,18 +70,21 @@ env = gym.make(
     "FrozenLake-v1",
     desc= desc,
     is_slippery=True,
-    success_rate=9.9/10.0,
-    reward_schedule=(1, 0, 0)
+    success_rate=9/10.0,
+    #reward_schedule=(1, 0, 0)
+    reward_schedule=(1, -1, -0.01) #pénalité de -0.01 par pas de temps.
 )
 
-#Notes sur environnement Custom Simon
-#success_rate=3/4 passe par le plus long chemin
-#success_rate=9.0/10.0 # passe par le chemin intermédiaire
+#---Entraînement---
 
-model = PPO("MlpPolicy", env, verbose=1, tensorboard_log="./8x8_tensorboard/")
-model.learn(total_timesteps=5_000_000, tb_log_name="ppo_seed0")
-model.save("ppo_8x8")
-print("Modèle sauvegardé : ppo_8x8")
+model = PPO("MlpPolicy", env, verbose=1, tensorboard_log="./10x10_tensorboard/")
+model.learn(total_timesteps=1_000_000, tb_log_name="ppo_pen_minus1")
+
+#model = DQN("MlpPolicy", env, verbose=1, tensorboard_log="./8x8_tensorboard/")
+#model.learn(total_timesteps=5_000_000, log_interval=4, tb_log_name="DQN_seed0")
+
+model.save("ppo_10x10")
+print("Modèle sauvegardé : ppo_10x10")
 
 #--- Montrer la politique apprise ---
 # Récupérer la carte FrozenLake
