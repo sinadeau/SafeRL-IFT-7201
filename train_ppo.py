@@ -1,90 +1,67 @@
 import gymnasium as gym
 from stable_baselines3 import PPO, DQN
+from stable_baselines3.common.monitor import Monitor
+from gymnasium.wrappers import TimeLimit
 import numpy as np
 import matplotlib.pyplot as plt
 
-#--- Default environment---
-#env = gym.make(
-#    'FrozenLake-v1',
-#    map_name="8x8",
-#    is_slippery=True,
-#    success_rate=2.0/3.0,
-#    reward_schedule=(1, 0, 0)       
-#)
+#--- Paramètres de l'expérience ---
+success_rate=9/10.0 # probabilité de ne pas glisser
+max_episode_steps = 60 # Limiter la durée d'un épisode à 60 pas
+total_timesteps = 500_000 #Nombre de pas de temps totaux pour l'entraînement
+env_type = "8x8_default" #Environnement (cas d'étude) choisi "8x8_default" ou "10x10_custom"
 
-#---Custom environments---
+#---Définition de l'environnement
 
-#Simon 8 x 8 
-desc= [
+#Pour environement par défaut 8x8
+if env_type == "8x8_default":
+    reward_schedule=(1, -0.1, -0.01) #Reach Goal, Reach Hole, Reach Frozen (idem à Zhu et. al 2025) 
+
+    desc = [    
         "SFFFFFFF",
         "FFFFFFFF",
-        "HFHFFFFF",
-        "HFFFHHFF",
-        "HFHFFFFF",
-        "HFFFHFFF",
-        "FFFFFFFF",
-        "GFFFFFFF"
-    ] 
+        "FFFHFFFF",
+        "FFFFFHFF",
+        "FFFHFFFF",
+        "FHHFFFHF",
+        "FHFFHFHF",
+        "FFFHFFFG",
+        ]
 
-#Notes sur environnement Custom Simon 8x8
-#success_rate=3/4 passe par le plus long chemin
-#success_rate=9.0/10.0 # passe par le chemin intermédiaire
-#success_rate=9.9/10.0 # passe par le chemin le plus court et plus risqué
+elif env_type == "10x10_custom":
+    #Pour environement custom 10x10
+    reward_schedule=(1, -0.5, -0.01) #Reach Goal, Reach Hole, Reach Frozen 
 
-#Simon 10 x 10
-desc = [
-    "FFFFFFFFFF",
-    "FFFFFFFFFF",
-    "HFHFFFFFFF",
-    "FFFFHFFFFF",
-    "HFFFFFFHFF",
-    "HFFFHFFFFF",
-    "HFFFFFFHFF",
-    "HFHFHFFFFF",
-    "FFFFFFFFFF",
-    "GFFFFFFFFF",
-    ]
-
-
-#Héloïse
-#desc= [
-#        "SFFFFFHF",
-#        "FFFFHFFH",
-#        "HFFFFHFF",
-#        "FFFHFHFF",
-#        "FFFFFHFF",
-#        "FFFHFHFH",
-#        "FHFFFFFF",
-#        "FFFFHFFG"
-#    ]
-
-#Héloïse 2
-#desc= [
-#    "SFFHF",
-#    "HFFFH",
-#    "HHFFF",
-#    "GFFFF"
-#]
+    desc = [
+        "FFFFFFFFFF",
+        "FFFFFFFFFF",
+        "HFHFFFFFFF",
+        "FFFFHFFFFF",
+        "HFFFFFFHFF",
+        "HFFFHFFFFF",
+        "HFFFFFFHFF",
+        "HFHFHFFFFF",
+        "FFFFFFFFFF",
+        "GFFFFFFFFF",
+        ]
 
 env = gym.make(
     "FrozenLake-v1",
-    desc= desc,
+    desc=desc,
     is_slippery=True,
-    success_rate=9/10.0,
-    #reward_schedule=(1, 0, 0)
-    reward_schedule=(1, -1, -0.01) #pénalité de -0.01 par pas de temps.
+    success_rate=success_rate,
+    reward_schedule=reward_schedule
 )
 
+env = TimeLimit(env, max_episode_steps=max_episode_steps)
+env = Monitor(env)
+
 #---Entraînement---
+model = PPO("MlpPolicy", env, verbose=1, tensorboard_log=f"./{env_type}_tensorboard/")
+model.learn(total_timesteps=total_timesteps, tb_log_name=f"ppo_{env_type}")
 
-model = PPO("MlpPolicy", env, verbose=1, tensorboard_log="./10x10_tensorboard/")
-model.learn(total_timesteps=1_000_000, tb_log_name="ppo_pen_minus1")
-
-#model = DQN("MlpPolicy", env, verbose=1, tensorboard_log="./8x8_tensorboard/")
-#model.learn(total_timesteps=5_000_000, log_interval=4, tb_log_name="DQN_seed0")
-
-model.save("ppo_10x10")
-print("Modèle sauvegardé : ppo_10x10")
+model.save(f"ppo_{env_type}")
+print(f"Modèle sauvegardé : ppo_{env_type}")
 
 #--- Montrer la politique apprise ---
 # Récupérer la carte FrozenLake
