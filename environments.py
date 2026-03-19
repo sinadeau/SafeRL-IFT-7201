@@ -2,12 +2,13 @@
 Définition des environnements FrozenLake.
 """
 
+import numpy as np
 import gymnasium as gym
 from gymnasium.wrappers import TimeLimit
 from stable_baselines3.common.monitor import Monitor
 
 
-def create_env_8x8_default(max_episode_steps: int = 60, success_rate: float = 0.9) -> gym.Env:
+def create_env_8x8_default(max_episode_steps: int = 60, success_rate: float = 0.9, seed: int = 42) -> gym.Env:
     """
     Crée un environnement FrozenLake 8x8 avec configuration par défaut.
     
@@ -20,6 +21,7 @@ def create_env_8x8_default(max_episode_steps: int = 60, success_rate: float = 0.
     Args:
         max_episode_steps: Durée maximale d'un épisode (nombre de pas)
         success_rate: Probabilité de ne pas glisser (1.0 = déterministe)
+        seed: graine pour la génération aléatoire
         
     Returns:
         gym.Env: Environnement encapsulé avec TimeLimit et Monitor
@@ -46,12 +48,15 @@ def create_env_8x8_default(max_episode_steps: int = 60, success_rate: float = 0.
     )
     
     env = TimeLimit(env, max_episode_steps=max_episode_steps)
-    env = Monitor(env)
+    env = FrozenLakeInfoWrapper(env)
+    env = Monitor(env) #Pour log métriques standard dans tensorboard
+    env.reset(seed=seed)
+    
     
     return env
 
 
-def create_env_10x10_custom(max_episode_steps: int = 60, success_rate: float = 0.9) -> gym.Env:
+def create_env_10x10_custom(max_episode_steps: int = 60, success_rate: float = 0.9, seed: int = 42) -> gym.Env:
     """
     Crée un environnement FrozenLake 10x10 personnalisé.
     
@@ -65,6 +70,7 @@ def create_env_10x10_custom(max_episode_steps: int = 60, success_rate: float = 0
     Args:
         max_episode_steps: Durée maximale d'un épisode (nombre de pas)
         success_rate: Probabilité de ne pas glisser (1.0 = déterministe)
+        seed: graine pour la génération aléatoire
         
     Returns:
         gym.Env: Environnement encapsulé avec TimeLimit et Monitor
@@ -93,7 +99,9 @@ def create_env_10x10_custom(max_episode_steps: int = 60, success_rate: float = 0
     )
     
     env = TimeLimit(env, max_episode_steps=max_episode_steps)
-    env = Monitor(env)
+    env = FrozenLakeInfoWrapper(env)
+    env = Monitor(env) #Pour log métriques standard dans tensorboard
+    env.reset(seed=seed)
     
     return env
 
@@ -123,3 +131,82 @@ def get_env_by_type(
         return create_env_10x10_custom(max_episode_steps, success_rate)
     else:
         raise ValueError(f"Type d'environnement inconnu: {env_type}")
+
+
+class FrozenLakeInfoWrapper(gym.Wrapper):
+    """
+        Wrapper pour enrichir l'environnement FrozenLake avec des informations
+        supplémentaires utiles pour l'analyse des performances et de la sécurité.
+
+        Ce wrapper ajoute dans le dictionnaire `info` des indicateurs permettant de :
+        - distinguer les types de terminaison d'épisode (succès, chute, timeout)
+        - associer à chaque état un niveau de risque basé sur la proximité des trous
+
+        Le risque est défini comme une fonction du nombre de trous adjacents à la case courante. 
+        Chaque trou adjacent contribue de manière additive au risque :
+            risque = 2 × (nombre de trous adjacents)
+
+        Informations ajoutées à `info` à chaque pas :
+            - is_fall (bool) : True si l'agent est tombé dans un trou
+            - is_success (bool) : True si l'agent a atteint l'objectif
+            - is_timeout (bool) : True si l'épisode est terminé par dépassement du nombre de pas
+            - risk (int) : niveau de risque de la case courante
+
+        Args:
+            env (gym.Env): Environnement FrozenLake à encapsuler
+
+        Returns:
+            gym.Env: Environnement enrichi avec des informations supplémentaires dans `info`
+    """
+
+    def __init__(self, env):
+        super().__init__(env)
+
+        base_env = env.unwrapped
+        self.desc = base_env.desc
+        self.desc_str = self.desc.astype(str)
+        self.nrow, self.ncol = self.desc.shape
+
+        # Pré-calcul du risque pour chaque case        
+        self.risk_map = np.zeros((self.nrow, self.ncol), dtype=np.int32)
+
+        for row in range(self.nrow):
+            for col in range(self.ncol):
+                holes = 0
+
+                #Tile au dessus
+                if row > 0 and self.desc_str[row - 1, col] == "H":
+                    holes += 1
+                #Tile en dessous
+                if row < self.nrow - 1 and self.desc_str[row + 1, col] == "H":
+                    holes += 1
+                #Tile à gauche
+                if col > 0 and self.desc_str[row, col - 1] == "H":
+                    holes += 1
+                #Tile à droite
+                if col < self.ncol - 1 and self.desc_str[row, col + 1] == "H":
+                    holes += 1
+
+                self.risk_map[row, col] = 2 * holes
+
+    def step(self, action):
+        obs, reward, terminated, truncated, info = self.env.step(action)
+
+        info["is_fall"] = False
+        info["is_success"] = False
+        info["is_timeout"] = bool(truncated)
+
+        row, col = divmod(obs, self.ncol)
+        tile = self.desc_str[row, col]
+
+        info["risk"] = int(self.risk_map[row, col])
+
+        if terminated:
+            if tile == "H":
+                info["is_fall"] = True
+            elif tile == "G":
+                info["is_success"] = True
+
+        return obs, reward, terminated, truncated, info
+    
+    
