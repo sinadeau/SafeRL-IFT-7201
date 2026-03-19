@@ -39,16 +39,16 @@ def extract_policy_grid(env: gym.Env, model: BasePolicy) -> np.ndarray:
     
     # Parcourir tous les états
     for s in range(nrow * ncol):
-        r, c = divmod(s, ncol)
-        cell = desc[r, c]
+        row, col = divmod(s, ncol)
+        cell = desc[row, col]
         
         # Garder les cases spéciales
         if cell in ["H", "G"]:
-            policy_grid[r, c] = cell
+            policy_grid[row, col] = cell
         else:
             # Obtenir l'action préférentielle du modèle
             action, _ = model.predict(s, deterministic=True)
-            policy_grid[r, c] = ARROW_MAP[int(action)]
+            policy_grid[row, col] = ARROW_MAP[int(action)]
     
     return policy_grid
 
@@ -63,3 +63,50 @@ def print_policy(policy_grid: np.ndarray) -> None:
     print("Politique apprise:")
     for row in policy_grid:
         print("  ".join(row))
+
+def moving_average(x, window=20):
+    """
+    Calcule une moyenne glissante (moving average) sur une série de données.
+
+    Args:
+        x (array-like): Série de données (ex: rewards, longueurs d’épisodes, etc.)
+        window (int): Taille de la fenêtre de lissage (nombre de points)
+
+    Returns:
+        np.ndarray:
+            - Si len(x) >= window : série lissée de longueur len(x) - window + 1
+            - Sinon : retourne la série originale (pas assez de points pour lisser)
+
+    Notes:
+        - Le mode "valid" garantit que seules les moyennes complètes sont conservées
+          (pas de padding).
+        - Chaque valeur retournée correspond à la moyenne des `window` points précédents.
+    """
+    if len(x) < window:
+        return x
+    return np.convolve(x, np.ones(window)/window, mode="valid")
+
+def get_moving_averages_with_x(callback, window = 30):
+
+        rewards = np.array(callback.episode_rewards)
+        lengths = np.array(callback.episode_lengths)
+        falls = np.array(callback.episode_falls)
+        risks = np.array(callback.episode_risks)
+        successes = np.array(callback.episode_successes)
+        timeouts = np.array(callback.episode_timeouts)
+        cum_falls = np.array(callback.cum_falls)
+        timesteps = np.array(callback.episode_end_timesteps)
+
+        reward_mean = moving_average(rewards, window=window)
+        length_mean = moving_average(lengths, window=window)
+        fall_rate = moving_average(falls, window=window)
+        timeout_rate = moving_average(timeouts, window=window)
+        risk_mean = moving_average(risks, window=window)
+        
+        x_raw = np.arange(1, len(rewards) + 1)
+        if len(rewards) < window:
+            x_ma = x_raw
+        else:
+            x_ma = np.arange(window, len(rewards) + 1)
+
+        return x_raw, x_ma, reward_mean, length_mean, fall_rate, timeout_rate, risk_mean, cum_falls

@@ -109,7 +109,8 @@ def create_env_10x10_custom(max_episode_steps: int = 60, success_rate: float = 0
 def get_env_by_type(
     env_type: str,
     max_episode_steps: int = 60,
-    success_rate: float = 0.9
+    success_rate: float = 0.9,
+    seed: int = 42
 ) -> gym.Env:
     """
     Récupère un environnement selon son type.
@@ -118,6 +119,7 @@ def get_env_by_type(
         env_type: Type d'environnement ("8x8_default" ou "10x10_custom")
         max_episode_steps: Durée maximale d'un épisode
         success_rate: Probabilité de ne pas glisser
+        seed: graine pour la génération aléatoire
         
     Returns:
         gym.Env: L'environnement demandé
@@ -126,9 +128,9 @@ def get_env_by_type(
         ValueError: Si le type d'environnement n'est pas reconnu
     """
     if env_type == "8x8_default":
-        return create_env_8x8_default(max_episode_steps, success_rate)
+        return create_env_8x8_default(max_episode_steps, success_rate, seed)
     elif env_type == "10x10_custom":
-        return create_env_10x10_custom(max_episode_steps, success_rate)
+        return create_env_10x10_custom(max_episode_steps, success_rate, seed)
     else:
         raise ValueError(f"Type d'environnement inconnu: {env_type}")
 

@@ -1,4 +1,4 @@
-
+from stable_baselines3.common.callbacks import BaseCallback
 
 class MetricsCallback(BaseCallback):
     """
@@ -58,9 +58,26 @@ class MetricsCallback(BaseCallback):
             self.total_falls += fall
             self.cum_falls.append(self.total_falls)
             self.episode_end_timesteps.append(self.num_timesteps)
+            
+            # --- Logs custom TensorBoard ---
+            self.logger.record("custom/episode_reward", self.current_reward)
+            self.logger.record("custom/episode_length", self.current_length)
+            self.logger.record("custom/episode_risk", self.current_risk)
 
+            self.logger.record("custom/fall", fall)
+            self.logger.record("custom/success", success)
+            self.logger.record("custom/timeout", timeout)
+
+            self.logger.record("custom/cumulative_falls", self.total_falls)
+
+            # --- Reset ---
             self.current_reward = 0.0
             self.current_length = 0
             self.current_risk = 0
 
+            
+
         return True
+    
+
+    
