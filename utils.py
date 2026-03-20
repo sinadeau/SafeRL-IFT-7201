@@ -110,3 +110,96 @@ def get_moving_averages_with_x(callback, window = 30):
             x_ma = np.arange(window, len(rewards) + 1)
 
         return x_raw, x_ma, reward_mean, length_mean, fall_rate, timeout_rate, risk_mean, cum_falls
+
+
+def compute_rollout_metrics(callback: 'QLearningMetricsCallback') -> dict:
+    """
+    Calcule les métriques rollout moyennes à partir des données d'entraînement.
+    
+    Args:
+        callback: Instance de QLearningMetricsCallback contenant les métriques collectées
+        
+    Returns:
+        dict: Dictionnaire contenant les métriques rollout moyennes:
+            - ep_len_mean: Longueur moyenne des épisodes
+            - ep_rew_mean: Récompense moyenne des épisodes
+            - success_rate: Taux de succès (proportion d'épisodes avec succès)
+    """
+    if not callback.episode_lengths:
+        return {"ep_len_mean": 0.0, "ep_rew_mean": 0.0, "success_rate": 0.0}
+    
+    ep_len_mean = np.mean(callback.episode_lengths)
+    ep_rew_mean = np.mean(callback.episode_rewards)
+    success_rate = np.mean(callback.episode_successes)
+    
+    return {
+        "ep_len_mean": ep_len_mean,
+        "ep_rew_mean": ep_rew_mean,
+        "success_rate": success_rate
+    }
+
+
+class QLearningMetricsCallback:
+    """
+    Callback personnalisée pour suivre des métriques lors de l'entraînement Q-learning.
+    
+    Enregistre les mêmes métriques que MetricsCallback mais sans dépendre de Stable Baselines3.
+    Cette classe accumule les informations pour chaque pas en mémoire et calcule les
+    métriques agrégées lorsqu'un épisode se termine.
+    """
+
+    def __init__(self, verbose=0):
+        self.verbose = verbose
+
+        self.current_reward = 0.0
+        self.current_length = 0
+        self.current_risk = 0
+
+        # Listes avec 1 valeur par épisode
+        self.episode_rewards = []
+        self.episode_lengths = []
+        self.episode_falls = []
+        self.episode_successes = []
+        self.episode_timeouts = []
+        self.episode_risks = []
+        self.cum_falls = []
+        self.episode_end_timesteps = []
+
+        self.total_falls = 0
+        self.num_timesteps = 0
+
+    def on_step(self, reward: float, info: dict, done: bool, timestep: int) -> None:
+        """
+        Enregistre les informations d'un pas de simulation.
+        
+        Args:
+            reward: Récompense obtenue à ce pas
+            info: Dictionnaire d'information contenant is_fall, is_success, is_timeout, risk
+            done: Booléen indiquant si l'épisode est terminé
+            timestep: Numéro du timestep courant
+        """
+        self.current_reward += reward
+        self.current_length += 1
+        self.current_risk += info.get("risk", 0)
+        self.num_timesteps = timestep
+
+        if done:
+            fall = int(info.get("is_fall", False))
+            success = int(info.get("is_success", False))
+            timeout = int(info.get("is_timeout", False))
+
+            self.episode_rewards.append(self.current_reward)
+            self.episode_lengths.append(self.current_length)
+            self.episode_risks.append(self.current_risk)
+            self.episode_falls.append(fall)
+            self.episode_successes.append(success)
+            self.episode_timeouts.append(timeout)
+
+            self.total_falls += fall
+            self.cum_falls.append(self.total_falls)
+            self.episode_end_timesteps.append(self.num_timesteps)
+
+            # --- Reset ---
+            self.current_reward = 0.0
+            self.current_length = 0
+            self.current_risk = 0
