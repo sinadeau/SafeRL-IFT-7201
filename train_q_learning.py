@@ -155,7 +155,7 @@ ENV_TYPE = "10x10_custom"  # Type d'environnement: "8x8_default" ou "10x10_custo
 BASE_SEED = 42
 
 # Paramètres Q-learning
-LEARNING_RATE = 0.1  # Taux d'apprentissage (alpha)
+LEARNING_RATE = 1  # Taux d'apprentissage initial (alpha_0)
 GAMMA = 0.99  # Taux d'actualisation (discount factor)
 EPSILON = 1  # Probabilité d'exploration initiale
 QLEARNING_VERBOSE = 1  # Niveau de verbosité (1 = afficher les mises à jour)
