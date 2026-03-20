@@ -3,10 +3,10 @@ Entraînement d'une politique Q-learning pour l'environnement FrozenLake.
 """
 
 import numpy as np
-import gymnasium as gym
 from tqdm import tqdm
 from environments import get_env_by_type
 from utils import extract_policy_grid, print_policy, get_moving_averages_with_x, compute_rollout_metrics, QLearningMetricsCallback
+from stable_baselines3.common.logger import configure
 import matplotlib.pyplot as plt
 
 rng = np.random.default_rng()
@@ -18,12 +18,17 @@ class Qlearning:
     sur le site de Gymnasium: https://gymnasium.farama.org/tutorials/training_agents/frozenlake_q_learning/
     """
 
-    def __init__(self, learning_rate, gamma, state_size, action_size, verbose=0):
+    def __init__(self, learning_rate, gamma, state_size, action_size, epsilon=0.1, verbose=0):
         self.state_size = state_size
         self.action_size = action_size
+        self.learning_rate_init = learning_rate
         self.learning_rate = learning_rate
         self.gamma = gamma
+        self.epsilon_init = epsilon
+        self.epsilon = epsilon
+        self.epsilon_min = 0.01
         self.verbose = verbose
+        self.logger = None
 
         self.reset_qtable()
 
@@ -41,32 +46,35 @@ class Qlearning:
         """Réinitialise la Q-table."""
         self.qtable = np.zeros((self.state_size, self.action_size))
 
-    def learn(self, env, total_timesteps, explorer, callback):
+    def choose_action(self, state, action_space):
+        """Choisit une action selon epsilon-greedy."""
+        if rng.uniform(0, 1) < self.epsilon:
+            return action_space.sample()
+        else:
+            max_ids = np.where(self.qtable[state, :] == np.max(self.qtable[state, :]))[0]
+            return rng.choice(max_ids)
+
+    def learn(self, env, total_timesteps, callback):
         """
         Boucle d'entraînement Q-learning contrôlée par le nombre de timesteps.
         
         Args:
             env: Environnement Gymnasium
             total_timesteps: Nombre total de pas d'entraînement
-            explorer: Instance d'EpsilonGreedy pour la stratégie d'exploration
             callback: Instance de QLearningMetricsCallback pour enregistrer les métriques
         """
         timestep = 0
-        
-        # Barre de progression
+        episode = 0
         pbar = tqdm(total=total_timesteps, desc="Training Q-learning", unit="timestep")
+        decay_factor = 0.992  # Facteur de décroissance pour learning rate et epsilon
         
         while timestep < total_timesteps:
-            state = env.reset()[0]  # Réinitialiser l'environnement
+            state = env.reset()[0]
             done = False
             
             while not done and timestep < total_timesteps:
-                # Choisir une action selon la politique epsilon-greedy
-                action = explorer.choose_action(
-                    action_space=env.action_space,
-                    state=state,
-                    qtable=self.qtable
-                )
+                # Choisir une action
+                action = self.choose_action(state, env.action_space)
                 
                 # Exécuter l'action
                 new_state, reward, terminated, truncated, info = env.step(action)
@@ -80,14 +88,40 @@ class Qlearning:
                 # Enregistrer les métriques
                 callback.on_step(reward, info, done, timestep)
                 
+                # Décay du learning rate et epsilon
+                self.learning_rate = self.learning_rate_init * (decay_factor ** episode)
+                self.epsilon = max(self.epsilon_min, self.epsilon_init * (decay_factor ** episode))
+                
+                # Logger les métriques custom et rollout
+                if done:
+                    rollout_metrics = compute_rollout_metrics(callback)
+                    if self.logger:
+                        self.logger.record("custom/episode_reward", callback.episode_rewards[-1])
+                        self.logger.record("custom/episode_length", callback.episode_lengths[-1])
+                        self.logger.record("custom/episode_risk", callback.episode_risks[-1])
+                        self.logger.record("custom/fall", callback.episode_falls[-1])
+                        self.logger.record("custom/success", callback.episode_successes[-1])
+                        self.logger.record("custom/timeout", callback.episode_timeouts[-1])
+                        self.logger.record("custom/cumulative_falls", callback.cum_falls[-1])
+                        self.logger.record("rollout/ep_len_mean", rollout_metrics["ep_len_mean"])
+                        self.logger.record("rollout/ep_rew_mean", rollout_metrics["ep_rew_mean"])
+                        self.logger.record("rollout/success_rate", rollout_metrics["success_rate"])
+                        self.logger.record("learning/learning_rate", self.learning_rate)
+                        self.logger.record("learning/epsilon", self.epsilon)
+                        self.logger.dump(step=timestep)
+                
                 # Incrémenter le timestep
                 timestep += 1
                 pbar.update(1)
                 
                 # Mettre à jour l'état
                 state = new_state
-        
+            episode += 1
         pbar.close()
+        
+        # Fermer le logger
+        if self.logger:
+            self.logger.close()
 
     def save(self, path):
         """Sauvegarde la Q-table dans un fichier."""
@@ -111,34 +145,6 @@ class Qlearning:
         action = np.argmax(self.qtable[state, :])
         return action, None
 
-class EpsilonGreedy:
-    """
-    Stratégie d'exploration epsilon-greedy pour la sélection d'actions. Le code pour cette classe a été
-    adapté à partir de l'exemple d'entraînement Q-learning sur FrozenLake disponible sur le site de
-    Gymnasium: https://gymnasium.farama.org/tutorials/training_agents/frozenlake_q_learning/
-    """
-
-    def __init__(self, epsilon):
-        self.epsilon = epsilon
-
-    def choose_action(self, action_space, state, qtable):
-        """Choisit une action `a` dans l'état actuel du monde (s)."""
-        # Premièrement, nous générons un nombre aléatoire
-        explor_exploit_tradeoff = rng.uniform(0, 1)
-
-        # Exploration
-        if explor_exploit_tradeoff < self.epsilon:
-            action = action_space.sample()
-
-        # Exploitation (prendre la plus grande valeur Q pour cet état)
-        else:
-            # Casser les égalités aléatoirement
-            # Trouver les indices où la valeur Q est égale à la valeur maximale
-            # Choisir une action aléatoire parmi les indices où la valeur Q est maximale
-            max_ids = np.where(qtable[state, :] == max(qtable[state, :]))[0]
-            action = rng.choice(max_ids)
-        return action
-    
 # ==================== CONFIGURATION ====================
 
 # Paramètres de l'expérience
@@ -150,8 +156,8 @@ BASE_SEED = 42
 
 # Paramètres Q-learning
 LEARNING_RATE = 0.1  # Taux d'apprentissage (alpha)
-GAMMA = 0.99  # Facteur de rabais (discount factor)
-EPSILON = 0.1  # Probabilité d'exploration dans epsilon-greedy
+GAMMA = 0.99  # Taux d'actualisation (discount factor)
+EPSILON = 1  # Probabilité d'exploration initiale
 QLEARNING_VERBOSE = 1  # Niveau de verbosité (1 = afficher les mises à jour)
 
 
@@ -183,21 +189,24 @@ def main():
         gamma=GAMMA,
         state_size=state_size,
         action_size=action_size,
+        epsilon=EPSILON,
         verbose=QLEARNING_VERBOSE
     )
     
-    # Créer l'explorateur epsilon-greedy
-    explorer = EpsilonGreedy(epsilon=EPSILON)
-    
     # Créer la callback pour enregistrer les métriques
     callback = QLearningMetricsCallback(verbose=QLEARNING_VERBOSE)
+    
+    # Configurer le logger TensorBoard
+    learner.logger = configure(
+        folder=f"./{ENV_TYPE}_tensorboard/q_learning_{BASE_SEED}",
+        format_strings=["tensorboard"]
+    )
     
     # Entraîner le modèle
     print(f"\nEntraînement du modèle Q-learning...")
     learner.learn(
         env=env,
         total_timesteps=TOTAL_TIMESTEPS,
-        explorer=explorer,
         callback=callback
     )
     
