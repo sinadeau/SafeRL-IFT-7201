@@ -2,14 +2,13 @@
 Entraînement d'une politique Q-learning pour l'environnement FrozenLake.
 """
 
+import os
 import numpy as np
 from tqdm import tqdm
 from environments import create_env
-from utils import extract_policy_grid, print_policy, get_moving_averages_with_x, compute_rollout_metrics, QLearningMetricsCallback
+from utils import extract_policy_grid, print_policy, get_moving_averages_with_x, compute_rollout_metrics, QLearningMetricsCallback, save_callback_metrics_npz
 from stable_baselines3.common.logger import configure
 import matplotlib.pyplot as plt
-
-rng = np.random.default_rng()
 
 class Qlearning:
     """
@@ -18,7 +17,7 @@ class Qlearning:
     sur le site de Gymnasium: https://gymnasium.farama.org/tutorials/training_agents/frozenlake_q_learning/
     """
 
-    def __init__(self, learning_rate, gamma, state_size, action_size, epsilon=0.1, verbose=0):
+    def __init__(self, learning_rate, gamma, state_size, action_size, epsilon=0.1, verbose=0, seed=42):
         self.state_size = state_size
         self.action_size = action_size
         self.learning_rate_init = learning_rate
@@ -29,6 +28,7 @@ class Qlearning:
         self.epsilon_min = 0.01
         self.verbose = verbose
         self.logger = None
+        self.rng = np.random.default_rng(seed=seed)
 
         self.reset_qtable()
 
@@ -48,11 +48,11 @@ class Qlearning:
 
     def choose_action(self, state, action_space):
         """Choisit une action selon epsilon-greedy."""
-        if rng.uniform(0, 1) < self.epsilon:
+        if self.rng.uniform(0, 1) < self.epsilon:
             return action_space.sample()
         else:
             max_ids = np.where(self.qtable[state, :] == np.max(self.qtable[state, :]))[0]
-            return rng.choice(max_ids)
+            return self.rng.choice(max_ids)
 
     def learn(self, env, total_episodes, callback = None):
         """
@@ -112,11 +112,11 @@ class Qlearning:
                 
                 # Incrémenter le timestep
                 timestep += 1
-                pbar.update(1)
                 
                 # Mettre à jour l'état
                 state = new_state
             episode += 1
+            pbar.update(1)
         pbar.close()
         
         # Fermer le logger
@@ -125,6 +125,7 @@ class Qlearning:
 
     def save(self, path):
         """Sauvegarde la Q-table dans un fichier."""
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         np.save(path, self.qtable)
     
     def predict(self, state, deterministic=True):
@@ -150,7 +151,7 @@ class Qlearning:
 # Paramètres de l'expérience
 SUCCESS_RATE = 9 / 10.0  # Probabilité de ne pas glisser (slippery env)
 MAX_EPISODE_STEPS = 60  # Durée maximale d'un épisode (nombre de pas)
-TOTAL_EPISODES = 427_000  # Nombre total d'épisodes pour l'entraînement
+TOTAL_EPISODES = 7_000  # Nombre total d'épisodes pour l'entraînement
 ENV_TYPE = "10x10_custom"  # Type d'environnement: "8x8_default" ou "10x10_custom"
 BASE_SEED = 42
 
@@ -172,7 +173,7 @@ def main():
         ENV_TYPE,
         max_episode_steps=MAX_EPISODE_STEPS,
         success_rate=SUCCESS_RATE,
-        seed=BASE_SEED
+        seed=BASE_SEED ###À modifier pour rouler n répétitions de l'expérience
     )
     
     # Récupérer la taille de l'espace d'états et d'actions
@@ -190,7 +191,8 @@ def main():
         state_size=state_size,
         action_size=action_size,
         epsilon=EPSILON,
-        verbose=QLEARNING_VERBOSE
+        verbose=QLEARNING_VERBOSE,
+        seed=BASE_SEED ###À modifier pour rouler n répétitions de l'expérience
     )
     
     # Créer la callback pour enregistrer les métriques
@@ -211,9 +213,14 @@ def main():
     )
     
     # Sauvegarder le modèle
-    model_path = f"q_learning_{ENV_TYPE}_{BASE_SEED}.npy"
+    model_path = f"q_learning_{ENV_TYPE}/model_{BASE_SEED}.npy" ###À modifier pour rouler n répétitions de l'expérience
     learner.save(model_path)
     print(f"\nModèle sauvegardé: {model_path}")
+
+    # Sauvegarder le callback
+    callback_path = f"q_learning_{ENV_TYPE}/callback_{BASE_SEED}.npz" ###À modifier pour rouler n répétitions de l'expérience
+    save_callback_metrics_npz(callback, callback_path)
+    print(f"\nCallback sauvegardé: {callback_path}")
     
     # Extraire et afficher la politique apprise
     print("\nExtraction de la politique apprise...")
@@ -224,39 +231,6 @@ def main():
     # Fermer l'environnement
     env.close()
     print("\nEntraînement terminé.")
-
-    # Plot metrics
-    x_raw, x_ma, reward_mean, length_mean, fall_rate, timeout_rate, risk_mean, cum_falls = get_moving_averages_with_x(callback, window=30)
-
-    fig, axs = plt.subplots(2, 3, figsize=(12, 8))
-
-    axs[0, 0].plot(x_ma, reward_mean)
-    axs[0, 0].set_title("Reward moyen par épisode")
-    axs[0, 0].set_xlabel("Épisodes")
-
-    axs[0, 1].plot(x_ma, length_mean)
-    axs[0, 1].set_title("Longueur moyenne de l'épisode")
-    axs[0, 1].set_xlabel("Épisodes")
-
-    axs[0, 2].plot(x_ma, fall_rate)
-    axs[0, 2].set_title("Taux de chute")
-    axs[0, 2].set_xlabel("Épisodes")
-
-    axs[1, 0].plot(x_raw, cum_falls)
-    axs[1, 0].set_title("Nombre cumulé de chutes")
-    axs[1, 0].set_xlabel("Épisodes")
-
-    axs[1, 1].plot(x_ma, risk_mean)
-    axs[1, 1].set_title("Risque moyen par épisode")
-    axs[1, 1].set_xlabel("Épisodes")
-
-    axs[1, 2].plot(x_ma, timeout_rate)
-    axs[1, 2].set_title("Taux de timeout")
-    axs[1, 2].set_xlabel("Épisodes")
-
-    plt.tight_layout()
-    plt.show()
-
 
 if __name__ == "__main__":
     main()
