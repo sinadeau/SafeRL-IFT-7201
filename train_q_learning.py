@@ -4,7 +4,7 @@ Entraînement d'une politique Q-learning pour l'environnement FrozenLake.
 
 import numpy as np
 from tqdm import tqdm
-from environments import get_env_by_type
+from environments import create_env
 from utils import extract_policy_grid, print_policy, get_moving_averages_with_x, compute_rollout_metrics, QLearningMetricsCallback
 from stable_baselines3.common.logger import configure
 import matplotlib.pyplot as plt
@@ -168,7 +168,7 @@ def main():
     
     # Créer l'environnement
     print(f"Création de l'environnement: {ENV_TYPE}")
-    env = get_env_by_type(
+    env = create_env(
         ENV_TYPE,
         max_episode_steps=MAX_EPISODE_STEPS,
         success_rate=SUCCESS_RATE,

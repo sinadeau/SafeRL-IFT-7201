@@ -2,7 +2,7 @@
 Entraînement d'une politique PPO sur l'environnement FrozenLake.
 """
 
-from environments import get_env_by_type
+from environments import create_env
 from utils import extract_policy_grid, print_policy, save_callback_metrics_npz
 from utils_SB3 import SB3MetricsCallback
 from stable_baselines3 import PPO
@@ -28,7 +28,7 @@ def main():
     
     # Créer l'environnement
     print(f"Création de l'environnement: {ENV_TYPE}")
-    env = get_env_by_type(
+    env = create_env(
         ENV_TYPE,
         max_episode_steps=MAX_EPISODE_STEPS,
         success_rate=SUCCESS_RATE,
