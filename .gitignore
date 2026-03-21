@@ -11,9 +11,11 @@ wheels/
 
 # TensorBoard logs
 *_tensorboard/
+*/tensorboard/*
 
 # Model artifacts
 *.pth
 *.pt
 *.zip
 *.npy
+*.npz
