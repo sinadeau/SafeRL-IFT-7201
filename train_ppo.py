@@ -5,6 +5,7 @@ Entraînement d'une politique PPO sur l'environnement FrozenLake.
 from environments import create_env
 from utils import extract_policy_grid, print_policy, save_callback_metrics_npz
 from utils_SB3 import SB3MetricsCallback
+from stable_baselines3.common.callbacks import StopTrainingOnMaxEpisodes
 from stable_baselines3 import PPO
 
 # ==================== CONFIGURATION ====================
@@ -12,7 +13,7 @@ from stable_baselines3 import PPO
 # Paramètres de l'expérience
 SUCCESS_RATE = 9 / 10.0  # Probabilité de ne pas glisser (slippery env)
 MAX_EPISODE_STEPS = 60  # Durée maximale d'un épisode (nombre de pas)
-TOTAL_TIMESTEPS = 100_000  # Nombre total de pas pour l'entraînement
+TOTAL_EPISODES = 427350  # Nombre total d'épisodes pour l'entraînement
 ENV_TYPE = "10x10_custom"  # Type d'environnement: "8x8_default" ou "10x10_custom"
 BASE_SEED = 22
 
@@ -37,7 +38,7 @@ def main():
     
     # Créer et entraîner le modèle
     print(f"\nEntraînement du modèle PPO...")
-    print(f"  - Total timesteps: {TOTAL_TIMESTEPS:,}")
+    print(f"  - Episodes: {TOTAL_EPISODES:,}")
     print(f"  - Environnement: {ENV_TYPE}")
     
     model = PPO(
@@ -50,8 +51,8 @@ def main():
     
     callback = SB3MetricsCallback()
     model.learn(
-        total_timesteps=TOTAL_TIMESTEPS,
-        callback=callback,
+        total_timesteps=int(1e10), # Temps d'entraînement illimité, arrêté par StopTrainingOnMaxEpisodes
+        callback=[callback, StopTrainingOnMaxEpisodes(max_episodes=TOTAL_EPISODES)],
         tb_log_name=f"ppo_{BASE_SEED}" ###À modifier pour rouler n répétitions de l'expérience
     )
     

@@ -54,25 +54,25 @@ class Qlearning:
             max_ids = np.where(self.qtable[state, :] == np.max(self.qtable[state, :]))[0]
             return rng.choice(max_ids)
 
-    def learn(self, env, total_timesteps, callback):
+    def learn(self, env, total_episodes, callback = None):
         """
-        Boucle d'entraînement Q-learning contrôlée par le nombre de timesteps.
+        Boucle d'entraînement Q-learning contrôlée par le nombre d'épisodes.
         
         Args:
             env: Environnement Gymnasium
-            total_timesteps: Nombre total de pas d'entraînement
-            callback: Instance de QLearningMetricsCallback pour enregistrer les métriques
+            total_episodes: Nombre total d'épisodes pour l'entraînement
+            callback: Callback à appeler à chaque pas de temps
         """
         timestep = 0
         episode = 0
-        pbar = tqdm(total=total_timesteps, desc="Training Q-learning", unit="timestep")
+        pbar = tqdm(total=total_episodes, desc="Training Q-learning", unit="episodes")
         decay_factor = 0.992  # Facteur de décroissance pour learning rate et epsilon
         
-        while timestep < total_timesteps:
+        while episode < total_episodes:
             state = env.reset()[0]
             done = False
             
-            while not done and timestep < total_timesteps:
+            while not done:
                 # Choisir une action
                 action = self.choose_action(state, env.action_space)
                 
@@ -150,7 +150,7 @@ class Qlearning:
 # Paramètres de l'expérience
 SUCCESS_RATE = 9 / 10.0  # Probabilité de ne pas glisser (slippery env)
 MAX_EPISODE_STEPS = 60  # Durée maximale d'un épisode (nombre de pas)
-TOTAL_TIMESTEPS = 100_000  # Nombre total de pas pour l'entraînement
+TOTAL_EPISODES = 427_000  # Nombre total d'épisodes pour l'entraînement
 ENV_TYPE = "10x10_custom"  # Type d'environnement: "8x8_default" ou "10x10_custom"
 BASE_SEED = 42
 
@@ -181,7 +181,7 @@ def main():
     
     # Créer le modèle Q-learning
     print(f"\nInitialisation du modèle Q-learning...")
-    print(f"  - Total timesteps: {TOTAL_TIMESTEPS:,}")
+    print(f"  - Total episodes: {TOTAL_EPISODES:,}")
     print(f"  - Environnement: {ENV_TYPE}")
     
     learner = Qlearning(
@@ -206,7 +206,7 @@ def main():
     print(f"\nEntraînement du modèle Q-learning...")
     learner.learn(
         env=env,
-        total_timesteps=TOTAL_TIMESTEPS,
+        total_episodes=TOTAL_EPISODES,
         callback=callback
     )
     
