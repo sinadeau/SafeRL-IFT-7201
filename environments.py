@@ -75,7 +75,7 @@ def create_env_10x10_custom(max_episode_steps: int = 60, success_rate: float = 0
     Returns:
         gym.Env: Environnement encapsulé avec TimeLimit et Monitor
     """
-    reward_schedule = (1, -0.5, -0.01)  # (Goal, Hole, Frozen)
+    reward_schedule = (1, -0.1, -0.01)  # (Goal, Hole, Frozen)
     
     desc = [
         "FFFFFFFFFF",

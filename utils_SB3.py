@@ -1,6 +1,6 @@
 from stable_baselines3.common.callbacks import BaseCallback
 
-class MetricsCallback(BaseCallback):
+class SB3MetricsCallback(BaseCallback):
     """
     Callback pour suivre des métriques par épisode durant l'entraînement.
 
