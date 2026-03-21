@@ -193,6 +193,18 @@ class QLearningMetricsCallback:
         self.total_falls = 0
         self.num_timesteps = 0
 
+    def __getitem__(self, key):
+        """
+        Permet l'accès aux attributs via la syntaxe de dictionnaire.
+        
+        Args:
+            key: Nom de l'attribut à récupérer
+            
+        Returns:
+            La valeur de l'attribut correspondant
+        """
+        return getattr(self, key)
+
     def on_step(self, reward: float, info: dict, done: bool, timestep: int) -> None:
         """
         Enregistre les informations d'un pas de simulation.
