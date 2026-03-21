@@ -44,7 +44,7 @@ def main():
         PPO_POLICY,
         env,
         verbose=PPO_VERBOSE,
-        tensorboard_log=f"./ppo_{ENV_TYPE}_tensorboard/",
+        tensorboard_log=f"./ppo_{ENV_TYPE}/tensorboard/",
         seed = BASE_SEED ###À modifier pour rouler n répétitions de l'expérience
     )
     
