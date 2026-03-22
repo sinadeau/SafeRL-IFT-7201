@@ -91,7 +91,7 @@ class FrozenLakeInfoWrapper(gym.Wrapper):
 
         Le risque est défini comme une fonction du nombre de trous adjacents à la case courante. 
         Chaque trou adjacent contribue de manière additive au risque :
-            risque = 2 × (nombre de trous adjacents)
+            risque = 2 x (nombre de trous adjacents)
 
         Informations ajoutées à `info` à chaque pas :
             - is_fall (bool) : True si l'agent est tombé dans un trou

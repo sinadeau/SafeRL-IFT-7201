@@ -2,8 +2,12 @@
 Entraînement d'une politique PPO sur l'environnement FrozenLake.
 """
 
+import os
+import numpy as np
 from environments import create_env
-from utils import extract_policy_grid, print_policy, save_callback_metrics_npz
+from utils import (save_callback_metrics_npz, load_callback_metrics_npz,
+                   run_training_repetitions, average_smoothed_metrics_across_runs,
+                   log_averaged_metrics_to_tensorboard)
 from utils_SB3 import SB3MetricsCallback
 from stable_baselines3.common.callbacks import StopTrainingOnMaxEpisodes
 from stable_baselines3 import PPO
@@ -11,70 +15,71 @@ from stable_baselines3 import PPO
 # ==================== CONFIGURATION ====================
 
 # Paramètres de l'expérience
-SUCCESS_RATE = 9 / 10.0  # Probabilité de ne pas glisser (slippery env)
-MAX_EPISODE_STEPS = 60  # Durée maximale d'un épisode (nombre de pas)
-TOTAL_EPISODES = 427350  # Nombre total d'épisodes pour l'entraînement
-ENV_TYPE = "10x10_custom"  # Type d'environnement: "8x8_default" ou "10x10_custom"
-BASE_SEED = 22
+SUCCESS_RATE = 9 / 10.0        # Probabilité de ne pas glisser (slippery env)
+MAX_EPISODE_STEPS = 60         # Durée maximale d'un épisode (nombre de pas)
+TOTAL_EPISODES = 427_000       # Nombre total d'épisodes par répétition
+ENV_TYPE = "10x10_custom"      # Type d'environnement: "8x8_default" ou "10x10_custom"
+BASE_SEED = 22                 # Graine de base ; la répétition i utilise BASE_SEED + i
+N_REPETITIONS = 10             # Nombre de répétitions d'entraînement
+WINDOW = 30                    # Fenêtre de lissage pour les métriques moyennées
 
 # Paramètres PPO
 PPO_POLICY = "MlpPolicy"  # Architecture de politique: "MlpPolicy" pour réseaux de neurones
-PPO_VERBOSE = 1  # Niveau de verbosité (1 = afficher les mises à jour)
+PPO_VERBOSE = 1           # Niveau de verbosité (1 = afficher les mises à jour)
+
+
+# ==================== ENTRAÎNEMENT D'UNE RÉPÉTITION ====================
+
+def train_one_ppo(seed):
+    """Entraîne une répétition PPO avec la graine donnée et sauvegarde les artéfacts."""
+    output_dir = f"ppo_{ENV_TYPE}"
+    os.makedirs(output_dir, exist_ok=True)
+
+    env = create_env(ENV_TYPE, max_episode_steps=MAX_EPISODE_STEPS,
+                     success_rate=SUCCESS_RATE, seed=seed)
+    model = PPO(PPO_POLICY, env, verbose=PPO_VERBOSE,
+                tensorboard_log=f"./{output_dir}/tensorboard/", seed=seed)
+
+    callback = SB3MetricsCallback()
+    model.learn(
+        total_timesteps=int(1e10),  # Arrêté par StopTrainingOnMaxEpisodes
+        callback=[callback, StopTrainingOnMaxEpisodes(max_episodes=TOTAL_EPISODES)],
+        tb_log_name=f"ppo_{seed}"
+    )
+
+    model.save(f"{output_dir}/model_{seed}")
+    callback_path = f"{output_dir}/callback_{seed}.npz"
+    save_callback_metrics_npz(callback, callback_path)
+    env.close()
+    print(f"\nRépétition terminée (seed={seed}).")
+    return load_callback_metrics_npz(callback_path)
 
 
 # ==================== PIPELINE D'ENTRAÎNEMENT ====================
 
 def main():
-    """Entraîne une politique PPO et affiche les résultats."""
-    
-    # Créer l'environnement
-    print(f"Création de l'environnement: {ENV_TYPE}")
-    env = create_env(
-        ENV_TYPE,
-        max_episode_steps=MAX_EPISODE_STEPS,
-        success_rate=SUCCESS_RATE,
-        seed = BASE_SEED ###À modifier pour rouler n répétitions de l'expérience
-    )
-    
-    # Créer et entraîner le modèle
-    print(f"\nEntraînement du modèle PPO...")
-    print(f"  - Episodes: {TOTAL_EPISODES:,}")
-    print(f"  - Environnement: {ENV_TYPE}")
-    
-    model = PPO(
-        PPO_POLICY,
-        env,
-        verbose=PPO_VERBOSE,
-        tensorboard_log=f"./ppo_{ENV_TYPE}/tensorboard/",
-        seed = BASE_SEED ###À modifier pour rouler n répétitions de l'expérience
-    )
-    
-    callback = SB3MetricsCallback()
-    model.learn(
-        total_timesteps=int(1e10), # Temps d'entraînement illimité, arrêté par StopTrainingOnMaxEpisodes
-        callback=[callback, StopTrainingOnMaxEpisodes(max_episodes=TOTAL_EPISODES)],
-        tb_log_name=f"ppo_{BASE_SEED}" ###À modifier pour rouler n répétitions de l'expérience
-    )
-    
-    # Sauvegarder le modèle
-    model_path = f"ppo_{ENV_TYPE}/model_{BASE_SEED}" ###À modifier pour rouler n répétitions de l'expérience
-    model.save(model_path)
-    print(f"\nModèle sauvegardé: {model_path}")
-    
-    # Sauvegarder le callback
-    callback_path = f"ppo_{ENV_TYPE}/callback_{BASE_SEED}.npz" ###À modifier pour rouler n répétitions de l'expérience
-    save_callback_metrics_npz(callback, callback_path)
-    print(f"\nCallback sauvegardé: {callback_path}")
+    """Lance N_REPETITIONS entraînements PPO en parallèle et calcule les métriques moyennées."""
+    print(f"Entraînement PPO — {N_REPETITIONS} répétition(s), environnement: {ENV_TYPE}")
 
-    # Extraire et afficher la politique apprise
-    print("\nExtraction de la politique apprise...")
-    policy_grid = extract_policy_grid(env, model)
-    print()
-    print_policy(policy_grid)
-    
-    # Fermer l'environnement
-    env.close()
-    print("\nEntraînement terminé.")   
+    # Lancer toutes les répétitions en parallèle (ThreadPoolExecutor)
+    callbacks_data = run_training_repetitions(train_one_ppo, N_REPETITIONS, BASE_SEED)
+
+    # Lisser et moyenner les métriques sur toutes les répétitions
+    averaged = average_smoothed_metrics_across_runs(callbacks_data, window=WINDOW)
+
+    # Sauvegarder les métriques moyennées
+    output_dir = f"ppo_{ENV_TYPE}"
+    avg_path = f"{output_dir}/averaged_metrics.npz"
+    np.savez(avg_path, **averaged)
+    print(f"Métriques moyennées sauvegardées: {avg_path}")
+
+    # Enregistrer les métriques moyennées dans TensorBoard
+    tb_dir = f"{output_dir}/tensorboard/ppo_averaged"
+    log_averaged_metrics_to_tensorboard(averaged, tb_dir)
+    print(f"Métriques moyennées enregistrées dans TensorBoard: {tb_dir}")
+
+    print("\nEntraînement terminé.")
+
 
 if __name__ == "__main__":
     main()

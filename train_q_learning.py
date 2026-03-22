@@ -6,9 +6,10 @@ import os
 import numpy as np
 from tqdm import tqdm
 from environments import create_env
-from utils import extract_policy_grid, print_policy, get_moving_averages_with_x, compute_rollout_metrics, QLearningMetricsCallback, save_callback_metrics_npz
-from stable_baselines3.common.logger import configure
-import matplotlib.pyplot as plt
+from utils import (QLearningMetricsCallback, save_callback_metrics_npz,
+                   load_callback_metrics_npz, run_training_repetitions,
+                   average_smoothed_metrics_across_runs, log_averaged_metrics_to_tensorboard,
+                   log_run_metrics_to_tensorboard)
 
 class Qlearning:
     """
@@ -17,7 +18,7 @@ class Qlearning:
     sur le site de Gymnasium: https://gymnasium.farama.org/tutorials/training_agents/frozenlake_q_learning/
     """
 
-    def __init__(self, learning_rate, gamma, state_size, action_size, epsilon=0.1, verbose=0, seed=42):
+    def __init__(self, learning_rate, gamma, state_size, action_size, epsilon=0.1, epsilon_min=0.01, verbose=0, seed=42):
         self.state_size = state_size
         self.action_size = action_size
         self.learning_rate_init = learning_rate
@@ -25,9 +26,8 @@ class Qlearning:
         self.gamma = gamma
         self.epsilon_init = epsilon
         self.epsilon = epsilon
-        self.epsilon_min = 0.01
+        self.epsilon_min = epsilon_min
         self.verbose = verbose
-        self.logger = None
         self.rng = np.random.default_rng(seed=seed)
 
         self.reset_qtable()
@@ -66,7 +66,7 @@ class Qlearning:
         timestep = 0
         episode = 0
         pbar = tqdm(total=total_episodes, desc="Training Q-learning", unit="episodes")
-        decay_factor = 0.992  # Facteur de décroissance pour learning rate et epsilon
+        decay_factor = 0.995  # Facteur de décroissance pour learning rate et epsilon
         
         while episode < total_episodes:
             state = env.reset()[0]
@@ -92,24 +92,6 @@ class Qlearning:
                 self.learning_rate = self.learning_rate_init * (decay_factor ** episode)
                 self.epsilon = max(self.epsilon_min, self.epsilon_init * (decay_factor ** episode))
                 
-                # Logger les métriques custom et rollout
-                if done:
-                    rollout_metrics = compute_rollout_metrics(callback)
-                    if self.logger:
-                        self.logger.record("custom/episode_reward", callback.episode_rewards[-1])
-                        self.logger.record("custom/episode_length", callback.episode_lengths[-1])
-                        self.logger.record("custom/episode_risk", callback.episode_risks[-1])
-                        self.logger.record("custom/fall", callback.episode_falls[-1])
-                        self.logger.record("custom/success", callback.episode_successes[-1])
-                        self.logger.record("custom/timeout", callback.episode_timeouts[-1])
-                        self.logger.record("custom/cumulative_falls", callback.cum_falls[-1])
-                        self.logger.record("rollout/ep_len_mean", rollout_metrics["ep_len_mean"])
-                        self.logger.record("rollout/ep_rew_mean", rollout_metrics["ep_rew_mean"])
-                        self.logger.record("rollout/success_rate", rollout_metrics["success_rate"])
-                        self.logger.record("learning/learning_rate", self.learning_rate)
-                        self.logger.record("learning/epsilon", self.epsilon)
-                        self.logger.dump(step=timestep)
-                
                 # Incrémenter le timestep
                 timestep += 1
                 
@@ -118,10 +100,6 @@ class Qlearning:
             episode += 1
             pbar.update(1)
         pbar.close()
-        
-        # Fermer le logger
-        if self.logger:
-            self.logger.close()
 
     def save(self, path):
         """Sauvegarde la Q-table dans un fichier."""
@@ -149,88 +127,88 @@ class Qlearning:
 # ==================== CONFIGURATION ====================
 
 # Paramètres de l'expérience
-SUCCESS_RATE = 9 / 10.0  # Probabilité de ne pas glisser (slippery env)
-MAX_EPISODE_STEPS = 60  # Durée maximale d'un épisode (nombre de pas)
-TOTAL_EPISODES = 7_000  # Nombre total d'épisodes pour l'entraînement
-ENV_TYPE = "10x10_custom"  # Type d'environnement: "8x8_default" ou "10x10_custom"
-BASE_SEED = 42
+SUCCESS_RATE = 9 / 10.0        # Probabilité de ne pas glisser (slippery env)
+MAX_EPISODE_STEPS = 60         # Durée maximale d'un épisode (nombre de pas)
+TOTAL_EPISODES = 427_000       # Nombre total d'épisodes par répétition
+ENV_TYPE = "10x10_custom"      # Type d'environnement: "8x8_default" ou "10x10_custom"
+BASE_SEED = 42                 # Graine de base ; la répétition i utilise BASE_SEED + i
+N_REPETITIONS = 10             # Nombre de répétitions d'entraînement
+WINDOW = 30                    # Fenêtre de lissage pour les métriques moyennées
 
 # Paramètres Q-learning
-LEARNING_RATE = 1  # Taux d'apprentissage initial (alpha_0)
-GAMMA = 0.99  # Taux d'actualisation (discount factor)
-EPSILON = 1  # Probabilité d'exploration initiale
-QLEARNING_VERBOSE = 1  # Niveau de verbosité (1 = afficher les mises à jour)
+LEARNING_RATE = 1     # Taux d'apprentissage initial (alpha_0)
+GAMMA = 0.99          # Taux d'actualisation (discount factor)
+EPSILON = 1           # Probabilité d'exploration initiale
+EPSILON_MIN = 0.01    # Probabilité d'exploration minimale
+QLEARNING_VERBOSE = 1 # Niveau de verbosité (1 = afficher les mises à jour)
+
+
+# ==================== ENTRAÎNEMENT D'UNE RÉPÉTITION ====================
+
+def train_one_q_learning(seed):
+    """Entraîne une répétition Q-learning avec la graine donnée et sauvegarde les artéfacts."""
+    output_dir = f"q_learning_{ENV_TYPE}"
+    os.makedirs(output_dir, exist_ok=True)
+
+    env = create_env(ENV_TYPE, max_episode_steps=MAX_EPISODE_STEPS,
+                     success_rate=SUCCESS_RATE, seed=seed)
+    state_size = env.observation_space.n
+    action_size = env.action_space.n
+
+    learner = Qlearning(
+        learning_rate=LEARNING_RATE, gamma=GAMMA,
+        state_size=state_size, action_size=action_size,
+        epsilon=EPSILON, epsilon_min=EPSILON_MIN, verbose=QLEARNING_VERBOSE, seed=seed
+    )
+    callback = QLearningMetricsCallback(verbose=QLEARNING_VERBOSE)
+
+    learner.learn(env=env, total_episodes=TOTAL_EPISODES, callback=callback)
+    learner.save(f"{output_dir}/model_{seed}.npy")
+    callback_path = f"{output_dir}/callback_{seed}.npz"
+    save_callback_metrics_npz(callback, callback_path)
+    env.close()
+    print(f"\nRépétition terminée (seed={seed}).")
+    return load_callback_metrics_npz(callback_path)
 
 
 # ==================== PIPELINE D'ENTRAÎNEMENT ====================
 
 def main():
-    """Entraîne une politique Q-learning et affiche les résultats."""
-    
-    # Créer l'environnement
-    print(f"Création de l'environnement: {ENV_TYPE}")
-    env = create_env(
-        ENV_TYPE,
-        max_episode_steps=MAX_EPISODE_STEPS,
-        success_rate=SUCCESS_RATE,
-        seed=BASE_SEED ###À modifier pour rouler n répétitions de l'expérience
-    )
-    
-    # Récupérer la taille de l'espace d'états et d'actions
-    state_size = env.observation_space.n
-    action_size = env.action_space.n
-    
-    # Créer le modèle Q-learning
-    print(f"\nInitialisation du modèle Q-learning...")
-    print(f"  - Total episodes: {TOTAL_EPISODES:,}")
-    print(f"  - Environnement: {ENV_TYPE}")
-    
-    learner = Qlearning(
-        learning_rate=LEARNING_RATE,
-        gamma=GAMMA,
-        state_size=state_size,
-        action_size=action_size,
-        epsilon=EPSILON,
-        verbose=QLEARNING_VERBOSE,
-        seed=BASE_SEED ###À modifier pour rouler n répétitions de l'expérience
-    )
-    
-    # Créer la callback pour enregistrer les métriques
-    callback = QLearningMetricsCallback(verbose=QLEARNING_VERBOSE)
-    
-    # Configurer le logger TensorBoard
-    learner.logger = configure(
-        folder=f"./{ENV_TYPE}_tensorboard/q_learning_{BASE_SEED}",
-        format_strings=["tensorboard"]
-    )
-    
-    # Entraîner le modèle
-    print(f"\nEntraînement du modèle Q-learning...")
-    learner.learn(
-        env=env,
-        total_episodes=TOTAL_EPISODES,
-        callback=callback
-    )
-    
-    # Sauvegarder le modèle
-    model_path = f"q_learning_{ENV_TYPE}/model_{BASE_SEED}.npy" ###À modifier pour rouler n répétitions de l'expérience
-    learner.save(model_path)
-    print(f"\nModèle sauvegardé: {model_path}")
+    """Lance N_REPETITIONS entraînements Q-learning en parallèle et calcule les métriques moyennées."""
+    print(f"Entraînement Q-learning — {N_REPETITIONS} répétition(s), environnement: {ENV_TYPE}")
 
-    # Sauvegarder le callback
-    callback_path = f"q_learning_{ENV_TYPE}/callback_{BASE_SEED}.npz" ###À modifier pour rouler n répétitions de l'expérience
-    save_callback_metrics_npz(callback, callback_path)
-    print(f"\nCallback sauvegardé: {callback_path}")
-    
-    # Extraire et afficher la politique apprise
-    print("\nExtraction de la politique apprise...")
-    policy_grid = extract_policy_grid(env, learner)
-    print()
-    print_policy(policy_grid)
-    
-    # Fermer l'environnement
-    env.close()
+    output_dir = f"q_learning_{ENV_TYPE}"
+
+    # Lancer toutes les répétitions en parallèle (ThreadPoolExecutor)
+    callbacks_data = run_training_repetitions(train_one_q_learning, N_REPETITIONS, BASE_SEED)
+
+    # Écrire les métriques par épisode dans TensorBoard pour chaque répétition (séquentiel, thread principal)
+    print("Écriture des métriques par épisode dans TensorBoard...")
+    for i, data in enumerate(callbacks_data):
+        seed = BASE_SEED + i
+        n_episodes = len(data["episode_rewards"])
+        if n_episodes != TOTAL_EPISODES:
+            raise ValueError(
+                f"Répétition seed={seed}: {n_episodes} épisodes au lieu de {TOTAL_EPISODES}."
+            )
+        log_run_metrics_to_tensorboard(data, f"{output_dir}/tensorboard/q_learning_{seed}")
+        print(f"  TensorBoard écrit pour seed={seed} ({n_episodes} épisodes)")
+
+    # Lisser et moyenner les métriques sur toutes les répétitions
+    averaged = average_smoothed_metrics_across_runs(callbacks_data, window=WINDOW)
+
+    # Sauvegarder les métriques moyennées
+    avg_path = f"{output_dir}/averaged_metrics.npz"
+    np.savez(avg_path, **averaged)
+    print(f"Métriques moyennées sauvegardées: {avg_path}")
+
+    # Enregistrer les métriques moyennées dans TensorBoard
+    tb_dir = f"{output_dir}/tensorboard/q_learning_averaged"
+    log_averaged_metrics_to_tensorboard(averaged, tb_dir)
+    print(f"Métriques moyennées enregistrées dans TensorBoard: {tb_dir}")
+
     print("\nEntraînement terminé.")
+
 
 if __name__ == "__main__":
     main()

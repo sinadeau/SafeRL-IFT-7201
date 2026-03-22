@@ -5,8 +5,11 @@ Fonctions utilitaires.
 import numpy as np
 import matplotlib.pyplot as plt
 import gymnasium as gym
+import shutil
+from pathlib import Path
 from stable_baselines3.common.policies import BasePolicy
-
+from concurrent.futures import ThreadPoolExecutor
+from stable_baselines3.common.logger import configure as sb3_configure
 
 # Correspondance actions -> symboles de direction
 ARROW_MAP = {
@@ -15,7 +18,6 @@ ARROW_MAP = {
     2: "→",  # Droite
     3: "↑"   # Haut
 }
-
 
 def extract_policy_grid(env: gym.Env, model: BasePolicy) -> np.ndarray:
     """
@@ -52,7 +54,6 @@ def extract_policy_grid(env: gym.Env, model: BasePolicy) -> np.ndarray:
     
     return policy_grid
 
-
 def print_policy(policy_grid: np.ndarray) -> None:
     """
     Affiche la politique apprise dans la console.
@@ -86,31 +87,6 @@ def moving_average(x, window=20):
         return x
     return np.convolve(x, np.ones(window)/window, mode="valid")
 
-#def get_moving_averages_with_x(callback, window = 30):
-
-#    rewards = np.array(callback.episode_rewards)
-#    lengths = np.array(callback.episode_lengths)
-#    falls = np.array(callback.episode_falls)
-#    risks = np.array(callback.episode_risks)    
-#    timeouts = np.array(callback.episode_timeouts)
-#    cum_falls = np.array(callback.cum_falls)
-#    #successes = np.array(callback.episode_successes)
-#    #timesteps = np.array(callback.episode_end_timesteps)
-
-#    reward_mean = moving_average(rewards, window=window)
-#    length_mean = moving_average(lengths, window=window)
-#    fall_rate = moving_average(falls, window=window)
-#    timeout_rate = moving_average(timeouts, window=window)
-#    risk_mean = moving_average(risks, window=window)
-        
-#    x_raw = np.arange(1, len(rewards) + 1)
-#    if len(rewards) < window:
-#        x_ma = x_raw
-#    else:
-#        x_ma = np.arange(window, len(rewards) + 1)
-
-#    return x_raw, x_ma, reward_mean, length_mean, fall_rate, timeout_rate, risk_mean, cum_falls
-
 def get_moving_averages_with_x(data, window=30):
     rewards = np.array(data["episode_rewards"])
     lengths = np.array(data["episode_lengths"])
@@ -135,7 +111,6 @@ def get_moving_averages_with_x(data, window=30):
         x_ma = np.arange(window, len(rewards) + 1)
 
     return x_raw, x_ma, reward_mean, length_mean, fall_rate, timeout_rate, risk_mean, cum_falls
-
 
 def compute_rollout_metrics(callback: 'QLearningMetricsCallback') -> dict:
     """
@@ -162,7 +137,6 @@ def compute_rollout_metrics(callback: 'QLearningMetricsCallback') -> dict:
         "ep_rew_mean": ep_rew_mean,
         "success_rate": success_rate
     }
-
 
 class QLearningMetricsCallback:
     """
@@ -241,7 +215,6 @@ class QLearningMetricsCallback:
             self.current_length = 0
             self.current_risk = 0
 
-
 def save_callback_metrics_npz(callback, filepath):
     """
     Sauvegarde les métriques du callback dans un fichier .npz
@@ -265,3 +238,119 @@ def load_callback_metrics_npz(filepath):
     """
     data = np.load(filepath)
     return {key: data[key] for key in data.files}
+
+def run_training_repetitions(train_fn, n_repetitions, base_seed):
+    """
+    Lance n_repetitions d'entraînement en parallèle via un pool de threads.
+
+    Args:
+        train_fn: Fonction prenant (seed) et retournant les données du callback (dict)
+        n_repetitions: Nombre de répétitions
+        base_seed: Graine de base ; la répétition i utilise base_seed + i
+
+    Returns:
+        list[dict]: Données de callback pour chaque répétition, dans l'ordre
+    """
+    seeds = [base_seed + i for i in range(n_repetitions)]
+    with ThreadPoolExecutor(max_workers=n_repetitions) as executor:
+        futures = [executor.submit(train_fn, seed) for seed in seeds]
+        return [f.result() for f in futures]
+
+def average_smoothed_metrics_across_runs(callbacks_data_list, window=30):
+    """
+    Lisse les métriques de chaque répétition puis les moyenne sur toutes les répétitions.
+
+    Args:
+        callbacks_data_list: Liste de dicts de métriques (de load_callback_metrics_npz)
+        window: Taille de la fenêtre de lissage
+
+    Returns:
+        dict: Métriques lissées et moyennées, avec les clés:
+              x_ma, reward_mean, length_mean, fall_rate, timeout_rate, risk_mean,
+              x_raw, cum_falls
+    """
+    smoothed, raw_cf = [], []
+    for data in callbacks_data_list:
+        x_raw, x_ma, rew, length, falls, timeout, risk, cf = \
+            get_moving_averages_with_x(data, window=window)
+        smoothed.append((x_ma, rew, length, falls, timeout, risk))
+        raw_cf.append((x_raw, cf))
+
+    # Aligner toutes les séries sur la longueur minimale (sécurité si les longueurs diffèrent)
+    min_ma = min(len(r[1]) for r in smoothed)
+    min_raw = min(len(r[1]) for r in raw_cf)
+
+    return {
+        "x_ma":         smoothed[0][0][:min_ma].astype(int),
+        "reward_mean":  np.mean([r[1][:min_ma] for r in smoothed], axis=0),
+        "length_mean":  np.mean([r[2][:min_ma] for r in smoothed], axis=0),
+        "fall_rate":    np.mean([r[3][:min_ma] for r in smoothed], axis=0),
+        "timeout_rate": np.mean([r[4][:min_ma] for r in smoothed], axis=0),
+        "risk_mean":    np.mean([r[5][:min_ma] for r in smoothed], axis=0),
+        "x_raw":        raw_cf[0][0][:min_raw].astype(int),
+        "cum_falls":    np.mean([r[1][:min_raw] for r in raw_cf], axis=0),
+    }
+
+def log_run_metrics_to_tensorboard(callback_data, tensorboard_dir):
+    """
+    Écrit les métriques d'une seule répétition dans TensorBoard, une valeur par épisode.
+    Garantit exactement len(episode_rewards) pas par métrique.
+
+    Args:
+        callback_data: Dict de métriques (de load_callback_metrics_npz)
+        tensorboard_dir: Répertoire de sortie TensorBoard
+    """
+    # Nettoyer le dossier pour éviter de mélanger des séries de plusieurs exécutions.
+    tb_path = Path(tensorboard_dir)
+    shutil.rmtree(tb_path, ignore_errors=True)
+    logger = sb3_configure(folder=str(tb_path), format_strings=["tensorboard"])
+    n = len(callback_data["episode_rewards"])
+
+    # Moyennes cumulatives (équivalent à rollout/ep_*_mean de SB3)
+    ep_rew_mean  = np.cumsum(callback_data["episode_rewards"])  / np.arange(1, n + 1)
+    ep_len_mean  = np.cumsum(callback_data["episode_lengths"])  / np.arange(1, n + 1)
+    success_rate = np.cumsum(callback_data["episode_successes"]) / np.arange(1, n + 1)
+
+    for i in range(n):
+        logger.record("custom/episode_reward",   float(callback_data["episode_rewards"][i]))
+        logger.record("custom/episode_length",   float(callback_data["episode_lengths"][i]))
+        logger.record("custom/episode_risk",     float(callback_data["episode_risks"][i]))
+        logger.record("custom/fall",             float(callback_data["episode_falls"][i]))
+        logger.record("custom/success",          float(callback_data["episode_successes"][i]))
+        logger.record("custom/timeout",          float(callback_data["episode_timeouts"][i]))
+        logger.record("custom/cumulative_falls", float(callback_data["cum_falls"][i]))
+        logger.record("rollout/ep_rew_mean",     float(ep_rew_mean[i]))
+        logger.record("rollout/ep_len_mean",     float(ep_len_mean[i]))
+        logger.record("rollout/success_rate",    float(success_rate[i]))
+        logger.dump(step=i)
+    logger.close()
+
+
+def log_averaged_metrics_to_tensorboard(averaged_metrics, tensorboard_dir):
+    """
+    Enregistre les métriques lissées et moyennées dans TensorBoard.
+
+    Args:
+        averaged_metrics: Dict retourné par average_smoothed_metrics_across_runs
+        tensorboard_dir: Répertoire de sortie pour les fichiers TensorBoard
+    """
+    # Nettoyer le dossier pour éviter de mélanger des séries de plusieurs exécutions.
+    tb_path = Path(tensorboard_dir)
+    shutil.rmtree(tb_path, ignore_errors=True)
+    logger = sb3_configure(folder=str(tb_path), format_strings=["tensorboard"])
+
+    # Métriques lissées, indexées par épisode lissé (x_ma)
+    for i, ep in enumerate(averaged_metrics["x_ma"]):
+        logger.record("averaged/reward_mean",  float(averaged_metrics["reward_mean"][i]))
+        logger.record("averaged/length_mean",  float(averaged_metrics["length_mean"][i]))
+        logger.record("averaged/fall_rate",    float(averaged_metrics["fall_rate"][i]))
+        logger.record("averaged/timeout_rate", float(averaged_metrics["timeout_rate"][i]))
+        logger.record("averaged/risk_mean",    float(averaged_metrics["risk_mean"][i]))
+        logger.dump(step=int(ep))
+
+    # Chutes cumulées, indexées sur tous les épisodes bruts (x_raw)
+    for i, ep in enumerate(averaged_metrics["x_raw"]):
+        logger.record("averaged/cum_falls", float(averaged_metrics["cum_falls"][i]))
+        logger.dump(step=int(ep))
+
+    logger.close()

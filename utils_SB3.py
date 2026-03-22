@@ -70,6 +70,9 @@ class SB3MetricsCallback(BaseCallback):
 
             self.logger.record("custom/cumulative_falls", self.total_falls)
 
+            # Enregistrer les métriques dans TensorBoard à chaque épisode (step = indice d'épisode 0-indexé)
+            self.logger.dump(step=len(self.episode_rewards) - 1)
+
             # --- Reset ---
             self.current_reward = 0.0
             self.current_length = 0
