@@ -66,7 +66,7 @@ class Qlearning:
         timestep = 0
         episode = 0
         pbar = tqdm(total=total_episodes, desc="Training Q-learning", unit="episodes")
-        decay_factor = 0.995  # Facteur de décroissance pour learning rate et epsilon
+        decay_factor = 0.9995  # Facteur de décroissance pour learning rate et epsilon
         
         while episode < total_episodes:
             state = env.reset()[0]
@@ -129,7 +129,7 @@ class Qlearning:
 # Paramètres de l'expérience
 SUCCESS_RATE = 9 / 10.0        # Probabilité de ne pas glisser (slippery env)
 MAX_EPISODE_STEPS = 60         # Durée maximale d'un épisode (nombre de pas)
-TOTAL_EPISODES = 427_000       # Nombre total d'épisodes par répétition
+TOTAL_EPISODES = 150_000       # Nombre total d'épisodes par répétition
 ENV_TYPE = "10x10_custom"      # Type d'environnement: "8x8_default" ou "10x10_custom"
 BASE_SEED = 42                 # Graine de base ; la répétition i utilise BASE_SEED + i
 N_REPETITIONS = 10             # Nombre de répétitions d'entraînement
@@ -139,7 +139,7 @@ WINDOW = 30                    # Fenêtre de lissage pour les métriques moyenn�
 LEARNING_RATE = 1     # Taux d'apprentissage initial (alpha_0)
 GAMMA = 0.99          # Taux d'actualisation (discount factor)
 EPSILON = 1           # Probabilité d'exploration initiale
-EPSILON_MIN = 0.01    # Probabilité d'exploration minimale
+EPSILON_MIN = 0.001   # Probabilité d'exploration minimale
 QLEARNING_VERBOSE = 1 # Niveau de verbosité (1 = afficher les mises à jour)
 
 
