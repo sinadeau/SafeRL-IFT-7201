@@ -6,6 +6,9 @@ import numpy as np
 import gymnasium as gym
 from gymnasium.wrappers import TimeLimit
 from stable_baselines3.common.monitor import Monitor
+from matplotlib.colors import LinearSegmentedColormap, Normalize
+import matplotlib.pyplot as plt
+
 
 def create_env(
     env_type: str,
@@ -62,6 +65,30 @@ def create_env(
             "FFFFFFFFFF",
             "GFFFFFFFFF",
         ]
+    elif env_type == "16x16_random":
+        """
+        Configuration aléatoire pour tester la robustesse de l'agent à des environnements 
+        plus grands et moins structurés.
+
+        - Grille 16x16
+        - Trous positionnés aléatoirement avec une densité de 15%
+        - Objectif placé dans un coin opposé à la position de départ
+        """
+        np.random.seed(seed)
+        size = 16
+        desc = np.full((size, size), "F", dtype=str)
+
+        # Placer les trous aléatoirement (15% de la grille)
+        n_holes = int(0.15 * size * size)
+        hole_positions = np.random.choice(size * size, n_holes, replace=False)
+        for pos in hole_positions:
+            row, col = divmod(pos, size)
+            desc[row, col] = "H"
+
+        # Placer le départ et l'objectif
+        desc[0, 0] = "S"
+        desc[size - 1, size - 1] = "G"
+
     else:
         raise ValueError(f"Type d'environnement inconnu: {env_type}")
     
@@ -71,7 +98,8 @@ def create_env(
         desc=desc,
         is_slippery=True,
         success_rate=success_rate,
-        reward_schedule=reward_schedule
+        reward_schedule=reward_schedule,
+        render_mode="rgb_array"
     )
     env = TimeLimit(env, max_episode_steps=max_episode_steps)
     env = FrozenLakeInfoWrapper(env)
@@ -155,5 +183,50 @@ class FrozenLakeInfoWrapper(gym.Wrapper):
                 info["is_success"] = True
 
         return obs, reward, terminated, truncated, info
+    
+    def plot_risk_map(self):
+
+        # --- Colormap ---
+        colors = [
+            (0.0, "green"),
+            (2/6, "yellow"),
+            (4/6, "orange"),
+            (1.0, "red")
+        ]
+        cmap = LinearSegmentedColormap.from_list("risk_cmap", colors)
+        norm = Normalize(vmin=0, vmax=6)
+
+        risk_map = self.risk_map
+        desc = self.desc.astype(str)
+
+        fig, ax = plt.subplots(figsize=(5.5, 5))
+
+        im = ax.imshow(risk_map, cmap=cmap, norm=norm)
+
+        nrow, ncol = desc.shape
+
+        for i in range(nrow):
+            for j in range(ncol):
+                tile = desc[i, j]
+
+                if tile == "H":
+                    ax.add_patch(plt.Rectangle((j - 0.5, i - 0.5), 1, 1, color="blue"))
+                    ax.text(j, i, "H", ha="center", va="center", color="white", fontsize=12, weight="bold")
+
+                elif tile == "G":
+                    ax.add_patch(plt.Rectangle((j - 0.5, i - 0.5), 1, 1, color="#40E0D0"))
+                    ax.text(j, i, "G", ha="center", va="center", color="black", fontsize=12, weight="bold")
+
+                else:
+                    val = risk_map[i, j]
+                    ax.text(j, i, f"{val:.0f}", ha="center", va="center", fontsize=9)
+
+        cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        cbar.set_ticks([0, 2, 4, 6])
+        cbar.set_label(r"$\Delta$")
+
+        ax.set_title("Carte de risque")
+
+        plt.show()
     
     
