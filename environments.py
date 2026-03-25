@@ -105,7 +105,6 @@ def create_env(
     else:
         raise ValueError(f"Type d'environnement inconnu: {env_type}")
     
-    reward_schedule = (1, -0.1, -0.01)  # (Goal, Hole, Frozen)
     env = gym.make(
         "FrozenLake-v1",
         desc=desc,
