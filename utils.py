@@ -66,7 +66,7 @@ def print_policy(policy_grid: np.ndarray) -> None:
     for row in policy_grid:
         print("  ".join(row))
 
-def moving_average(x, window=20):
+def moving_average(x, window=100):
     """
     Calcule une moyenne glissante (moving average) sur une série de données.
 
@@ -84,9 +84,23 @@ def moving_average(x, window=20):
           (pas de padding).
         - Chaque valeur retournée correspond à la moyenne des `window` points précédents.
     """
-    if len(x) < window:
+    #Ancienne version simple (mais qui ne gère pas les NaN et peut retourner des valeurs plus courtes que x):
+    #if len(x) < window:
+    #    return x
+    #return np.convolve(x, np.ones(window)/window, mode="valid")
+
+    x = np.asarray(x, dtype=float)
+
+    if len(x) < window: # Pas assez de points pour lisser, retourner la série originale (mais ne risque pas d'arriver avec un nombre d'épisodes raisonnable)
         return x
-    return np.convolve(x, np.ones(window)/window, mode="valid")
+
+    kernel = np.ones(window)
+    sum_x = np.convolve(np.nan_to_num(x, nan=0.0), kernel, mode="valid")
+    count = np.convolve(~np.isnan(x), kernel, mode="valid")
+    out = sum_x / count
+    out[count == 0] = np.nan  # Si aucune valeur valide dans la fenêtre, retourner NaN
+
+    return out
 
 def get_moving_averages_with_x(data, window=30):
     rewards = np.array(data["episode_rewards"])
@@ -377,6 +391,7 @@ def average_smoothed_metrics_across_runs(callbacks_data_list, window=30):
         "success_rate": np.mean([r[5][:min_ma] for r in smoothed], axis=0),
         "timeout_rate": np.mean([r[6][:min_ma] for r in smoothed], axis=0),
         "risk_mean":    np.mean([r[7][:min_ma] for r in smoothed], axis=0),
+
         "x_raw":        raw_cf[0][0][:min_raw].astype(int),
         "cum_falls":    np.mean([r[1][:min_raw] for r in raw_cf], axis=0),
     }
