@@ -8,24 +8,26 @@ from environments import create_env
 from utils import (save_callback_metrics_npz, load_callback_metrics_npz,
                    run_training_repetitions, average_smoothed_metrics_across_runs,
                    log_averaged_metrics_to_tensorboard)
-from utils_SB3 import SB3MetricsCallback
+from utils import SB3MetricsCallback
 from stable_baselines3.common.callbacks import StopTrainingOnMaxEpisodes
 from stable_baselines3 import PPO
+import torch
 
 # ==================== CONFIGURATION ====================
 
 # Paramètres de l'expérience
 SUCCESS_RATE = 9 / 10.0        # Probabilité de ne pas glisser (slippery env)
 MAX_EPISODE_STEPS = 60         # Durée maximale d'un épisode (nombre de pas)
-TOTAL_EPISODES = 427_000       # Nombre total d'épisodes par répétition
+#TOTAL_EPISODES = 250_000       # Nombre total d'épisodes par répétition
+TOTAL_EPISODES = 5_000 
 ENV_TYPE = "10x10_custom"      # Type d'environnement: "8x8_default" ou "10x10_custom"
-BASE_SEED = 22                 # Graine de base ; la répétition i utilise BASE_SEED + i
+BASE_SEED = 42                 # Graine de base ; la répétition i utilise BASE_SEED + i
 N_REPETITIONS = 10             # Nombre de répétitions d'entraînement
-WINDOW = 30                    # Fenêtre de lissage pour les métriques moyennées
+WINDOW = 100                    # Fenêtre de lissage pour les métriques moyennées
 
 # Paramètres PPO
 PPO_POLICY = "MlpPolicy"  # Architecture de politique: "MlpPolicy" pour réseaux de neurones
-PPO_VERBOSE = 1           # Niveau de verbosité (1 = afficher les mises à jour)
+PPO_VERBOSE = 0           # Niveau de verbosité (1 = afficher les mises à jour)
 
 
 # ==================== ENTRAÎNEMENT D'UNE RÉPÉTITION ====================
@@ -37,8 +39,13 @@ def train_one_ppo(seed):
 
     env = create_env(ENV_TYPE, max_episode_steps=MAX_EPISODE_STEPS,
                      success_rate=SUCCESS_RATE, seed=seed)
+    
+    # Définition architecturale : 2 couches cachées de 16 neurones chacune, activation ReLU
+    policy_kwargs = dict(activation_fn=torch.nn.ReLU,
+                     net_arch=dict(pi=[16, 16], vf=[16, 16]))
+    
     model = PPO(PPO_POLICY, env, verbose=PPO_VERBOSE,
-                tensorboard_log=f"./{output_dir}/tensorboard/", seed=seed)
+                tensorboard_log=f"./{output_dir}/tensorboard/", seed=seed, policy_kwargs=policy_kwargs)
 
     callback = SB3MetricsCallback()
     model.learn(
