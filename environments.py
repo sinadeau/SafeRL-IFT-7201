@@ -34,7 +34,11 @@ def create_env(
         - Grille 8x8
         - Trous (H) positionnés stratégiquement
         - Objectif (G) défini
+        - reward_schedule = (1, -0.1, -0.01)  # (Goal, Hole, Frozen)
         """
+
+        reward_schedule = (1, -0.1, -0.01)
+
         desc = [
             "SFFFFFFF",
             "FFFFFFFF",
@@ -52,7 +56,11 @@ def create_env(
 
         - Grille 10x10
         - Configuration déduite empiriquement
+        - reward_schedule = (1, -0.5, -0.01)  # (Goal, Hole, Frozen)
         """
+
+        reward_schedule = (1, -0.5, -0.01) 
+
         desc = [
             "FFFFFFFFFF",
             "FFFFFFFFFF",
@@ -73,7 +81,12 @@ def create_env(
         - Grille 16x16
         - Trous positionnés aléatoirement avec une densité de 15%
         - Objectif placé dans un coin opposé à la position de départ
+        - reward_schedule = (1, -0.5, -0.01) # (Goal, Hole, Frozen)
         """
+
+        reward_schedule = (1, -0.5, -0.01) 
+
+        # Définition de la grille
         np.random.seed(seed)
         size = 16
         desc = np.full((size, size), "F", dtype=str)
