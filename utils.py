@@ -2,6 +2,7 @@
 Fonctions utilitaires.
 """
 
+import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import gymnasium as gym
@@ -462,3 +463,116 @@ def log_averaged_metrics_to_tensorboard(averaged_metrics, tensorboard_dir):
         logger.dump(step=int(ep))
 
     logger.close()
+
+
+def evaluate_policy_with_metrics(model, env, n_eval_episodes=100, deterministic=True):
+    """
+    Évalue une politique SB3 sur n épisodes et retourne des métriques customisées
+
+    Compatible avec un environnement non vectorisé.
+    """
+
+    episode_rewards = []
+    episode_lengths = []
+    episode_lengths_given_success = []    
+    episode_falls = []
+    episode_successes = []
+    episode_timeouts = []
+    episode_risks = []
+    cum_falls = []
+
+    total_falls = 0
+
+    for episode in range(n_eval_episodes):
+        obs, info = env.reset()
+
+        done = False
+        truncated = False
+
+        current_reward = 0.0
+        current_length = 0
+        current_risk = 0.0
+
+        while not (done or truncated):
+            action, _states = model.predict(obs, deterministic=deterministic)
+            
+            if isinstance(action, np.ndarray):
+                action = action.item()
+            action = int(action)
+                        
+            obs, reward, done, truncated, info = env.step(action)
+
+            current_reward += reward
+            current_length += 1
+            current_risk += info.get("risk", 0)
+
+        fall = int(info.get("is_fall", False))
+        success = int(info.get("is_success", False))
+        timeout = int(info.get("is_timeout", False))
+
+        episode_rewards.append(current_reward)
+        episode_lengths.append(current_length)
+        episode_lengths_given_success.append(current_length if success else np.nan)  # NaN pour les épisodes non réussis
+        episode_risks.append(current_risk)
+        episode_falls.append(fall)
+        episode_successes.append(success)
+        episode_timeouts.append(timeout)
+
+        total_falls += fall
+        cum_falls.append(total_falls)
+
+    results = {
+        "mean_reward": np.mean(episode_rewards),
+        "mean_length": np.mean(episode_lengths),
+        "mean_length_given_success": np.nanmean(episode_lengths_given_success),  # Moyenne en ignorant les NaN        
+        "mean_risk": np.mean(episode_risks),
+        "fall_rate": np.mean(episode_falls),
+        "success_rate": np.mean(episode_successes),
+        "timeout_rate": np.mean(episode_timeouts),
+        "total_falls": total_falls,
+    }
+
+    return results
+
+def average_eval_metrics_across_runs(eval_data_list):
+
+    """
+    Calcule les métriques d'évaluation moyennées et leurs écarts-types sur plusieurs répétitions.
+
+    Args:
+        eval_data_list: Liste de dicts de métriques d'évaluation
+
+    Returns:
+        tuple: (moyennes, écarts-types)
+            - moyennes: dict avec les métriques d'évaluation moyennées (clés avec suffixe "_mean")
+            - écarts-types: dict avec les écarts-types correspondants (clés avec suffixe "_std")
+    """
+
+    keys = eval_data_list[0].keys()
+
+    averaged = {}
+    std = {}
+    for k in keys:
+        values = [d[k] for d in eval_data_list]
+        values = np.array(values, dtype=float)
+        averaged[k] = np.nanmean(values)
+        std[f"{k}_std"] = np.nanstd(values, ddof=1) #Divider par n-1 pour l'écart-type d'un échantillon
+    return averaged, std
+
+def eval_metrics_to_dataframe(averaged, std):
+    """
+    
+
+    Args:
+
+    Returns:
+    """
+    rows = []
+    for k in averaged.keys():
+        rows.append({
+            "metric": k,
+            "mean": averaged[k],
+            "std": std[f"{k}_std"]
+        })
+    df = pd.DataFrame(rows)
+    return df
