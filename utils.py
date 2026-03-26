@@ -412,11 +412,6 @@ def log_run_metrics_to_tensorboard(callback_data, tensorboard_dir):
     logger = sb3_configure(folder=str(tb_path), format_strings=["tensorboard"])
     n = len(callback_data["episode_rewards"])
 
-    # Moyennes cumulatives (équivalent à rollout/ep_*_mean de SB3)
-    ep_rew_mean  = np.cumsum(callback_data["episode_rewards"])  / np.arange(1, n + 1)
-    ep_len_mean  = np.cumsum(callback_data["episode_lengths"])  / np.arange(1, n + 1)
-    success_rate = np.cumsum(callback_data["episode_successes"]) / np.arange(1, n + 1)
-
     for i in range(n):
         logger.record("custom/episode_reward",   float(callback_data["episode_rewards"][i]))
         logger.record("custom/episode_length",   float(callback_data["episode_lengths"][i]))
@@ -426,9 +421,6 @@ def log_run_metrics_to_tensorboard(callback_data, tensorboard_dir):
         logger.record("custom/success",          float(callback_data["episode_successes"][i]))
         logger.record("custom/timeout",          float(callback_data["episode_timeouts"][i]))
         logger.record("custom/cumulative_falls", float(callback_data["cum_falls"][i]))
-        logger.record("rollout/ep_rew_mean",     float(ep_rew_mean[i]))
-        logger.record("rollout/ep_len_mean",     float(ep_len_mean[i]))
-        logger.record("rollout/success_rate",    float(success_rate[i]))
         logger.dump(step=i)
     logger.close()
 
