@@ -9,7 +9,8 @@ from environments import create_env
 from utils import (QLearningMetricsCallback, save_callback_metrics_npz,
                    load_callback_metrics_npz, run_training_repetitions,
                    average_smoothed_metrics_across_runs, log_averaged_metrics_to_tensorboard,
-                   log_run_metrics_to_tensorboard)
+                   log_run_metrics_to_tensorboard, evaluate_policy_with_metrics,
+                   average_eval_metrics_across_runs, eval_metrics_to_dataframe)
 
 class Qlearning:
     """
@@ -119,7 +120,10 @@ class Qlearning:
         Returns:
             tuple: (action, None) - action est l'argmax de la Q-table
         """
-        if isinstance(state, np.ndarray) and state.shape == ():
+        if isinstance(state, np.ndarray):
+            # Accepte les observations scalaires ou tableaux de taille 1
+            state = int(np.asarray(state).reshape(-1)[0])
+        else:
             state = int(state)
         action = np.argmax(self.qtable[state, :])
         return action, None
@@ -134,6 +138,9 @@ ENV_TYPE = "10x10_custom"      # Type d'environnement: "8x8_default" ou "10x10_c
 BASE_SEED = 42                 # Graine de base ; la répétition i utilise BASE_SEED + i
 N_REPETITIONS = 10             # Nombre de répétitions d'entraînement
 WINDOW = 30                    # Fenêtre de lissage pour les métriques moyennées
+
+# Paramètres d'évaluation
+N_EVAL_EPISODES = 100  # Nombre d'épisodes par répétition pour l'évaluation finale de la politique apprise
 
 # Paramètres Q-learning
 LEARNING_RATE = 1     # Taux d'apprentissage initial (alpha_0)
@@ -166,9 +173,14 @@ def train_one_q_learning(seed):
     learner.save(f"{output_dir}/model_{seed}.npy")
     callback_path = f"{output_dir}/callback_{seed}.npz"
     save_callback_metrics_npz(callback, callback_path)
+    callback_metrics = load_callback_metrics_npz(callback_path)
+
+    # Évaluation de la politique apprise
+    eval_metrics = evaluate_policy_with_metrics(learner, env, n_eval_episodes=N_EVAL_EPISODES, deterministic=True)
+
     env.close()
     print(f"\nRépétition terminée (seed={seed}).")
-    return load_callback_metrics_npz(callback_path)
+    return callback_metrics, eval_metrics
 
 
 # ==================== PIPELINE D'ENTRAÎNEMENT ====================
@@ -180,7 +192,10 @@ def main():
     output_dir = f"q_learning_{ENV_TYPE}"
 
     # Lancer toutes les répétitions en parallèle (ThreadPoolExecutor)
-    callbacks_data = run_training_repetitions(train_one_q_learning, N_REPETITIONS, BASE_SEED)
+    results = run_training_repetitions(train_one_q_learning, N_REPETITIONS, BASE_SEED)
+    callbacks_data, eval_data = zip(*results)
+    callbacks_data = list(callbacks_data)
+    eval_data = list(eval_data)
 
     # Écrire les métriques par épisode dans TensorBoard pour chaque répétition (séquentiel, thread principal)
     print("Écriture des métriques par épisode dans TensorBoard...")
@@ -194,20 +209,33 @@ def main():
         log_run_metrics_to_tensorboard(data, f"{output_dir}/tensorboard/q_learning_{seed}")
         print(f"  TensorBoard écrit pour seed={seed} ({n_episodes} épisodes)")
 
-    # Lisser et moyenner les métriques sur toutes les répétitions
+    # Lisser et moyenner les métriques d'entraînement sur toutes les répétitions
     averaged = average_smoothed_metrics_across_runs(callbacks_data, window=WINDOW)
 
+    # Moyenner les métriques d'évaluation finale sur toutes les répétitions
+    averaged_eval, std_eval = average_eval_metrics_across_runs(eval_data)
+    print("\nMétriques d'évaluation finale moyennées sur les répétitions:")
+    for k, v in averaged_eval.items():
+        std_k = std_eval.get(f"{k}_std", 0)
+        print(f"  {k}: {v:.4f} ± {std_k:.4f}")
+
     # Sauvegarder les métriques moyennées
+    # Métriques d'entraînement
     avg_path = f"{output_dir}/averaged_metrics.npz"
     np.savez(avg_path, **averaged)
+    # Métriques d'évaluation finale (sauvegarder sous format pandas DataFrame)
+    eval_path = f"{output_dir}/averaged_eval_metrics.csv"
+    df_eval = eval_metrics_to_dataframe(averaged_eval, std_eval)
+    df_eval.to_csv(eval_path, index=False)
+
     print(f"Métriques moyennées sauvegardées: {avg_path}")
 
-    # Enregistrer les métriques moyennées dans TensorBoard
+    # Enregistrer les métriques d'entraînement moyennées dans TensorBoard
     tb_dir = f"{output_dir}/tensorboard/q_learning_averaged"
     log_averaged_metrics_to_tensorboard(averaged, tb_dir)
     print(f"Métriques moyennées enregistrées dans TensorBoard: {tb_dir}")
 
-    print("\nEntraînement terminé.")
+    print("\nEntraînement et évaluation terminé.")
 
 
 if __name__ == "__main__":

@@ -459,11 +459,19 @@ def log_averaged_metrics_to_tensorboard(averaged_metrics, tensorboard_dir):
 
 def evaluate_policy_with_metrics(model, env, n_eval_episodes=100, deterministic=True):
     """
-    Évalue une politique SB3 sur n épisodes et retourne des métriques customisées
+    Évalue une politique SB3 sur n épisodes et retourne des métriques customisées.
 
-    Compatible avec un environnement non vectorisé.
+    Args:
+        model: Modèle SB3 entraîné ayant une méthode predict()
+        env: Environnement d'évaluation non vectorisé
+        n_eval_episodes: Nombre d'épisodes à évaluer
+        deterministic: Si True, utilise la politique déterministe ; sinon, stochastique
+
+    Returns:
+        dict: Métriques d'évaluation (mean_reward, mean_length, success_rate, fall_rate, etc.)
     """
 
+    # Initialiser les listes pour accumuler les métriques par épisode
     episode_rewards = []
     episode_lengths = []
     episode_lengths_given_success = []    
@@ -475,17 +483,21 @@ def evaluate_policy_with_metrics(model, env, n_eval_episodes=100, deterministic=
 
     total_falls = 0
 
+    # Évaluer la politique sur n_eval_episodes épisodes
     for episode in range(n_eval_episodes):
         obs, info = env.reset()
 
         done = False
         truncated = False
 
+        # Accumulateurs pour cet épisode
         current_reward = 0.0
         current_length = 0
         current_risk = 0.0
 
+        # Simuler un épisode complet
         while not (done or truncated):
+            # Prédire l'action selon la politique
             action, _states = model.predict(obs, deterministic=deterministic)
             
             if isinstance(action, np.ndarray):
@@ -498,10 +510,12 @@ def evaluate_policy_with_metrics(model, env, n_eval_episodes=100, deterministic=
             current_length += 1
             current_risk += info.get("risk", 0)
 
+        # Extraire les informations de terminaison de l'épisode
         fall = int(info.get("is_fall", False))
         success = int(info.get("is_success", False))
         timeout = int(info.get("is_timeout", False))
 
+        # Enregistrer les métriques de l'épisode
         episode_rewards.append(current_reward)
         episode_lengths.append(current_length)
         episode_lengths_given_success.append(current_length if success else np.nan)  # NaN pour les épisodes non réussis
@@ -513,6 +527,7 @@ def evaluate_policy_with_metrics(model, env, n_eval_episodes=100, deterministic=
         total_falls += fall
         cum_falls.append(total_falls)
 
+    # Calculer les métriques moyennées sur tous les épisodes
     results = {
         "mean_reward": np.mean(episode_rewards),
         "mean_length": np.mean(episode_lengths),
@@ -527,16 +542,19 @@ def evaluate_policy_with_metrics(model, env, n_eval_episodes=100, deterministic=
     return results
 
 def average_eval_metrics_across_runs(eval_data_list):
-
     """
     Calcule les métriques d'évaluation moyennées et leurs écarts-types sur plusieurs répétitions.
 
+    Cette fonction agrège les résultats d'évaluations répétées d'une même politique pour obtenir
+    des statistiques robustes. Elle ignore les valeurs NaN (ex. length_given_success pour les
+    épisodes échoués) lors du calcul des moyennes.
+
     Args:
-        eval_data_list: Liste de dicts de métriques d'évaluation
+        eval_data_list: Liste de dicts de métriques d'évaluation (chaque dict issu d'une évaluation)
 
     Returns:
         tuple: (moyennes, écarts-types)
-            - moyennes: dict avec les métriques d'évaluation moyennées (clés avec suffixe "_mean")
+            - moyennes: dict avec les métriques d'évaluation moyennées
             - écarts-types: dict avec les écarts-types correspondants (clés avec suffixe "_std")
     """
 
@@ -544,21 +562,28 @@ def average_eval_metrics_across_runs(eval_data_list):
 
     averaged = {}
     std = {}
+    # Agréger chaque métrique en calculant sa moyenne et son écart-type
     for k in keys:
         values = [d[k] for d in eval_data_list]
         values = np.array(values, dtype=float)
+        # nanmean/nanstd ignore les valeurs NaN (ex. length_given_success pour épisodes échoués)
         averaged[k] = np.nanmean(values)
-        std[f"{k}_std"] = np.nanstd(values, ddof=1) #Divider par n-1 pour l'écart-type d'un échantillon
+        std[f"{k}_std"] = np.nanstd(values, ddof=1) # Diviser par n-1 pour l'écart-type d'un échantillon
     return averaged, std
 
 def eval_metrics_to_dataframe(averaged, std):
     """
-    
+    Convertit les métriques d'évaluation moyennées en un DataFrame pandas pour faciliter
+    l'affichage et la sauvegarde.
 
     Args:
+        averaged: Dict des métriques moyennées (issus de average_eval_metrics_across_runs)
+        std: Dict des écarts-types correspondants
 
     Returns:
+        pd.DataFrame: DataFrame avec colonnes [metric, mean, std] pour chaque métrique
     """
+    # Construire une liste de dictionnaires (une ligne par métrique)
     rows = []
     for k in averaged.keys():
         rows.append({
@@ -566,5 +591,6 @@ def eval_metrics_to_dataframe(averaged, std):
             "mean": averaged[k],
             "std": std[f"{k}_std"]
         })
+    # Créer le DataFrame à partir des lignes
     df = pd.DataFrame(rows)
     return df
