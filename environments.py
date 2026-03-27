@@ -62,7 +62,7 @@ def create_env(
         reward_schedule = (1, -0.5, -0.01) 
 
         desc = [
-            "FFFFFFFFFF",
+            "SFFFFFFFFF",
             "FFFFFFFFFF",
             "HFHFFFFFFF",
             "FFFFHFFFFF",
@@ -195,51 +195,6 @@ class FrozenLakeInfoWrapper(gym.Wrapper):
                 info["is_success"] = True
 
         return obs, reward, terminated, truncated, info
-    
-    #def plot_risk_map(self, title="Carte de risque de l'environnement"):
-
-    #    # --- Colormap ---
-    #    colors = [
-    #        (0.0, "green"),
-    #        (2/6, "yellow"),
-    #        (4/6, "orange"),
-    #        (1.0, "red")
-    #    ]
-    #    cmap = LinearSegmentedColormap.from_list("risk_cmap", colors)
-    #    norm = Normalize(vmin=0, vmax=6)
-
-    #    risk_map = self.risk_map
-    #    desc = self.desc.astype(str)
-
-    #    fig, ax = plt.subplots(figsize=(5.5, 5))
-
-    #    im = ax.imshow(risk_map, cmap=cmap, norm=norm)
-
-    #    nrow, ncol = desc.shape
-
-    #    for i in range(nrow):
-    #        for j in range(ncol):
-    #            tile = desc[i, j]
-
-    #            if tile == "H":
-    #                ax.add_patch(plt.Rectangle((j - 0.5, i - 0.5), 1, 1, color="blue"))
-    #                ax.text(j, i, "H", ha="center", va="center", color="white", fontsize=12, weight="bold")
-
-    #            elif tile == "G":
-    #                ax.add_patch(plt.Rectangle((j - 0.5, i - 0.5), 1, 1, color="#40E0D0"))
-    #                ax.text(j, i, "G", ha="center", va="center", color="black", fontsize=12, weight="bold")
-
-    #            else:
-    #                val = risk_map[i, j]
-    #                ax.text(j, i, f"{val:.0f}", ha="center", va="center", fontsize=9)
-
-    #        cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    #        cbar.set_ticks([0, 2, 4, 6])
-    #        cbar.set_label("Risque")
-
-    #    ax.set_title(title)
-
-    #    plt.show()
 
 
     def plot_risk_map(self, ax=None, title="Carte de risque de l'environnement", show_colorbar=True):
@@ -270,7 +225,12 @@ class FrozenLakeInfoWrapper(gym.Wrapper):
             for j in range(ncol):
                 tile = desc[i, j]
 
-                if tile == "H":
+                if tile == "S":
+                    ax.add_patch(plt.Rectangle((j - 0.5, i - 0.5), 1, 1, color="purple"))
+                    ax.text(j, i, "S", ha="center", va="center",
+                            color="white", fontsize=12, weight="bold")
+
+                elif tile == "H":
                     ax.add_patch(plt.Rectangle((j - 0.5, i - 0.5), 1, 1, color="blue"))
                     ax.text(j, i, "H", ha="center", va="center",
                             color="white", fontsize=12, weight="bold")
