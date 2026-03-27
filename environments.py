@@ -62,7 +62,7 @@ def create_env(
         reward_schedule = (1, -0.5, -0.01) 
 
         desc = [
-            "FFFFFFFFFF",
+            "SFFFFFFFFF",
             "FFFFFFFFFF",
             "HFHFFFFFFF",
             "FFFFHFFFFF",
@@ -195,9 +195,9 @@ class FrozenLakeInfoWrapper(gym.Wrapper):
                 info["is_success"] = True
 
         return obs, reward, terminated, truncated, info
-    
-    def plot_risk_map(self):
 
+
+    def plot_risk_map(self, ax=None, title="Carte de risque de l'environnement", show_colorbar=True):
         # --- Colormap ---
         colors = [
             (0.0, "green"),
@@ -211,7 +211,11 @@ class FrozenLakeInfoWrapper(gym.Wrapper):
         risk_map = self.risk_map
         desc = self.desc.astype(str)
 
-        fig, ax = plt.subplots(figsize=(5.5, 5))
+        # Si aucun axe n'est fourni, on crée une figure
+        created_fig = False
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(5.5, 5))
+            created_fig = True
 
         im = ax.imshow(risk_map, cmap=cmap, norm=norm)
 
@@ -221,24 +225,40 @@ class FrozenLakeInfoWrapper(gym.Wrapper):
             for j in range(ncol):
                 tile = desc[i, j]
 
-                if tile == "H":
+                if tile == "S":
+                    ax.add_patch(plt.Rectangle((j - 0.5, i - 0.5), 1, 1, color="purple"))
+                    ax.text(j, i, "S", ha="center", va="center",
+                            color="white", fontsize=12, weight="bold")
+
+                elif tile == "H":
                     ax.add_patch(plt.Rectangle((j - 0.5, i - 0.5), 1, 1, color="blue"))
-                    ax.text(j, i, "H", ha="center", va="center", color="white", fontsize=12, weight="bold")
+                    ax.text(j, i, "H", ha="center", va="center",
+                            color="white", fontsize=12, weight="bold")
 
                 elif tile == "G":
                     ax.add_patch(plt.Rectangle((j - 0.5, i - 0.5), 1, 1, color="#40E0D0"))
-                    ax.text(j, i, "G", ha="center", va="center", color="black", fontsize=12, weight="bold")
+                    ax.text(j, i, "G", ha="center", va="center",
+                            color="black", fontsize=12, weight="bold")
 
                 else:
                     val = risk_map[i, j]
-                    ax.text(j, i, f"{val:.0f}", ha="center", va="center", fontsize=9)
+                    ax.text(j, i, f"{val:.0f}", ha="center", va="center", fontsize=12)
 
-        cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-        cbar.set_ticks([0, 2, 4, 6])
-        cbar.set_label(r"$\Delta$")
+        ax.set_title(title, fontsize=20)
 
-        ax.set_title("Carte de risque")
+        ax.set_xticks(range(ncol))
+        ax.set_yticks(range(nrow))
+        ax.tick_params(axis='both', labelsize=12, width=1.5, length=5)
 
-        plt.show()
+        # colorbar seulement si demandé
+        if show_colorbar:
+            cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+            cbar.set_ticks([0, 2, 4, 6])
+            cbar.set_label("Risque", fontsize=20)
+
+        if created_fig:
+            plt.show()
+
+        return im
     
     
