@@ -137,7 +137,7 @@ TOTAL_EPISODES = 150_000       # Nombre total d'épisodes par répétition
 ENV_TYPE = "10x10_custom"      # Type d'environnement: "8x8_default" ou "10x10_custom"
 BASE_SEED = 42                 # Graine de base ; la répétition i utilise BASE_SEED + i
 N_REPETITIONS = 10             # Nombre de répétitions d'entraînement
-WINDOW = 30                    # Fenêtre de lissage pour les métriques moyennées
+WINDOW = 100                   # Fenêtre de lissage pour les métriques moyennées
 
 # Paramètres d'évaluation
 N_EVAL_EPISODES = 100  # Nombre d'épisodes par répétition pour l'évaluation finale de la politique apprise

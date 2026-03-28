@@ -19,11 +19,11 @@ import torch
 # Paramètres de l'expérience (entraînement et environnement)
 SUCCESS_RATE = 9 / 10.0        # Probabilité de ne pas glisser (slippery env)
 MAX_EPISODE_STEPS = 60         # Durée maximale d'un épisode (nombre de pas)
-TOTAL_EPISODES = 250_000       # Nombre total d'épisodes par répétition
-ENV_TYPE = "10x10_custom"      # Type d'environnement: "8x8_default" ou "10x10_custom"
+TOTAL_EPISODES = 150_000       # Nombre total d'épisodes par répétition
+ENV_TYPE = "8x8_default"       # Type d'environnement: "8x8_default" ou "10x10_custom"
 BASE_SEED = 42                 # Graine de base ; la répétition i utilise BASE_SEED + i
 N_REPETITIONS = 10             # Nombre de répétitions d'entraînement
-WINDOW = 100                    # Fenêtre de lissage pour les métriques moyennées
+WINDOW = 100                   # Fenêtre de lissage pour les métriques moyennées
 
 # Paramètres d'évaluation
 N_EVAL_EPISODES = 100  # Nombre d'épisodes par répétition pour l'évaluation finale de la politique apprise
@@ -47,7 +47,8 @@ def train_one_ppo(seed):
                      net_arch=dict(pi=[16, 16], vf=[16, 16]))
     
     model = PPO(PPO_POLICY, env, verbose=PPO_VERBOSE,
-                tensorboard_log=f"./{output_dir}/tensorboard/", seed=seed, policy_kwargs=policy_kwargs)
+                tensorboard_log=f"./{output_dir}/tensorboard/", seed=seed, policy_kwargs=policy_kwargs,
+                device="cpu")
 
     # Entraînement avec callback pour collecter les métriques et arrêter après un nombre d'épisodes
     callback = SB3MetricsCallback()
