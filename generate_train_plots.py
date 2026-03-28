@@ -28,7 +28,10 @@ DOSSIERS = [
 FIGURES_DIR = "Figures"
 
 # Algorithmes connus - utilisés pour extraire le nom d'environnement depuis le nom du dossier
-ALGOS_CONNUS = ["q_learning", "ppo"]
+ALGOS_CONNUS = {
+    "q_learning": "Q-learning", 
+    "ppo": "PPO"
+}
 
 # Environnements connus - utilisés pour l'affichage dans les titres
 ENVS_CONNUS = {
@@ -66,7 +69,7 @@ def extraire_algo_env(nom_dossier: str) -> tuple[str, str]:
     """
     # Tester les algorithmes connus du plus long au plus court pour éviter
     # les correspondances partielles (ex. "ppo" dans "q_learning_ppo_...")
-    for algo in sorted(ALGOS_CONNUS, key=len, reverse=True):
+    for algo in sorted(list(ALGOS_CONNUS.keys()), key=len, reverse=True):
         prefixe = algo + "_"
         if nom_dossier.startswith(prefixe):
             return algo, nom_dossier[len(prefixe):]
@@ -182,7 +185,7 @@ def tracer_metrique(
         x, y_moy, std = x[:n], y_moy[:n], std[:n]
 
         couleur = couleurs[idx % len(couleurs)]
-        ax.plot(x, y_moy, label=algo, color=couleur, linewidth=1.5)
+        ax.plot(x, y_moy, label=ALGOS_CONNUS[algo], color=couleur, linewidth=1.5)
         ax.fill_between(x, y_moy - std, y_moy + std, alpha=0.2, color=couleur)
 
     ax.set_xlabel("Épisode")
