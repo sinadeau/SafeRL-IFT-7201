@@ -49,13 +49,9 @@ ENVS_CONNUS = {
 #                          False -> utiliser x_ma avec moyenne mobile
 METRIQUES = [
     ("Récompense moyenne",         "reward_mean",               "episode_rewards",              False),
-    ("Taux de succès",             "success_rate",              "episode_successes",             False),
     ("Taux de chutes",             "fall_rate",                 "episode_falls",                 False),
-    ("Taux de timeout",            "timeout_rate",              "episode_timeouts",              False),
-    ("Longueur d'épisode",         "length_mean",               "episode_lengths",               False),
     ("Longueur d'épisode (succès)","length_given_success_mean", "episode_lengths_given_success", False),
     ("Risque moyen",               "risk_mean",                 "episode_risks",                 False),
-    ("Chutes cumulatives",         "cum_falls",                 "cum_falls",                     True),
 ]
 
 
@@ -213,28 +209,48 @@ def main():
         print("Aucun dossier valide trouvé. Vérifiez la liste DOSSIERS.")
         return
 
-    # Générer une figure par environnement avec un grid de métriques (2 lignes x 4 colonnes)
-    for nom_env, dossiers_env in groupes_env.items():
-        print(f"\nEnvironnement : {ENVS_CONNUS[nom_env]} ({len(dossiers_env)} algorithme(s))")
-        fig, axes = plt.subplots(2, 4, figsize=(22, 9))
-        axes = axes.flatten()  # Flatten to 1D array for easier iteration
+    # Créer une figure avec tous les métriques et environnements
+    num_metrics = len(METRIQUES)
+    num_envs = len(groupes_env)
+    height = max(4 + num_metrics * 2, 10)  # Hauteur minimale de 10, ajouter 2 par métrique
+    fig, axes = plt.subplots(num_metrics, num_envs, figsize=(6 * num_envs, height))
+    
+    # Gérer le cas où il y a seulement 1 métrique ou 1 environnement (les axes pourraient ne pas être 2D)
+    if num_metrics == 1 or num_envs == 1:
+        axes = axes.reshape(num_metrics, num_envs)
 
-        for idx, (label, cle_averaged, cle_callback, use_x_raw) in enumerate(METRIQUES):
+    print(f"Génération d'une figure avec {num_metrics} métriques et {num_envs} environnement(s)")
+
+    # Itérer sur les métriques (lignes) et environnements (colonnes)
+    for metric_idx, (label, cle_averaged, cle_callback, use_x_raw) in enumerate(METRIQUES):
+        for env_idx, (nom_env, dossiers_env) in enumerate(groupes_env.items()):
             try:
-                ax = axes[idx]
+                ax = axes[metric_idx, env_idx]
                 tracer_metrique(
                     ax, label, cle_averaged, cle_callback, use_x_raw, dossiers_env
                 )
-                print(f"  Métrique {idx+1}/8 : {label} - OK")
+                # Définir le titre de colonne uniquement pour la première ligne
+                if metric_idx == 0:
+                    ax.set_title(f"{ENVS_CONNUS[nom_env]}", fontsize=12, fontweight="bold")
+                else:
+                    ax.set_title("")
+                
+                # Définir l'étiquette de ligne uniquement pour la première colonne
+                if env_idx == 0:
+                    ax.set_ylabel(label, fontsize=11, fontweight="bold")
+                else:
+                    ax.set_ylabel("")
+                
+                print(f"  [{metric_idx+1}/{num_metrics}][{env_idx+1}/{num_envs}] {label} - {nom_env} - OK")
             except Exception as e:
                 print(f"  [ERREUR] {label} - {nom_env} : {e}")
 
-        fig.tight_layout()
-        nom_fichier = f"{nom_env}.png"
-        chemin_sortie = os.path.join(FIGURES_DIR, nom_fichier)
-        fig.savefig(chemin_sortie, dpi=150, bbox_inches="tight")
-        plt.close(fig)
-        print(f"  Sauvegardé : {chemin_sortie}")
+    fig.tight_layout()
+    nom_fichier = "all_metrics_all_environments.png"
+    chemin_sortie = os.path.join(FIGURES_DIR, nom_fichier)
+    fig.savefig(chemin_sortie, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"\nSauvegardé : {chemin_sortie}")
 
 
 if __name__ == "__main__":
