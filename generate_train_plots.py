@@ -9,6 +9,7 @@ import os
 import glob
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter
 
 # ===========================================================================
 # CONFIGURATION - ajouter ou retirer des dossiers selon les besoins.
@@ -49,8 +50,8 @@ ENVS_CONNUS = {
 #                          False -> utiliser x_ma avec moyenne mobile
 METRIQUES = [
     ("Récompense moyenne",         "reward_mean",               "episode_rewards",              False),
-    ("Taux de chutes",             "fall_rate",                 "episode_falls",                 False),
     ("Longueur d'épisode (succès)","length_given_success_mean", "episode_lengths_given_success", False),
+    ("Taux de chutes",             "fall_rate",                 "episode_falls",                 False),
     ("Risque moyen",               "risk_mean",                 "episode_risks",                 False),
 ]
 
@@ -183,11 +184,13 @@ def tracer_metrique(
         ax.plot(x, y_moy, label=ALGOS_CONNUS[algo], color=couleur, linewidth=1.5)
         ax.fill_between(x, y_moy - std, y_moy + std, alpha=0.2, color=couleur)
 
-    ax.set_xlabel("Épisode")
+    ax.set_xlabel("Épisode ($\\times 10^3$)")
     ax.set_ylabel(label)
     ax.set_title(label)
     ax.legend()
     ax.grid(True, alpha=0.3)
+    # Formater l'axe des x en milliers
+    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{int(x/1000)}'))
 
 
 def main():
@@ -212,12 +215,12 @@ def main():
     # Créer une figure avec tous les métriques et environnements
     num_metrics = len(METRIQUES)
     num_envs = len(groupes_env)
-    height = max(4 + num_metrics * 2, 10)  # Hauteur minimale de 10, ajouter 2 par métrique
-    fig, axes = plt.subplots(num_metrics, num_envs, figsize=(6 * num_envs, height))
+    height = max(4 + num_metrics * 1.5, 10)  # Hauteur minimale de 10, ajouter 1.5 par métrique
+    fig, axes = plt.subplots(num_metrics, num_envs, figsize=(4 * num_envs, height))
     
     # Gérer le cas où il y a seulement 1 métrique ou 1 environnement (les axes pourraient ne pas être 2D)
     if num_metrics == 1 or num_envs == 1:
-        axes = axes.reshape(num_metrics, num_envs)
+        axes = axes.reshape(num_metrics, num_envs) if not isinstance(axes, np.ndarray) or axes.ndim == 1 else axes
 
     print(f"Génération d'une figure avec {num_metrics} métriques et {num_envs} environnement(s)")
 
