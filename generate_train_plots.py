@@ -18,10 +18,10 @@ import matplotlib.pyplot as plt
 DOSSIERS = [
     "q_learning_8x8_default",
     "q_learning_10x10_custom",
-    #"q_learning_16x16_random",
+    "q_learning_16x16_random",
     "ppo_8x8_default",
-     "ppo_10x10_custom",
-    # "ppo_16x16_random",
+    "ppo_10x10_custom",
+    "ppo_16x16_random",
 ]
 
 # Dossier de sortie pour les figures
@@ -147,19 +147,18 @@ def calculer_std_seeds(
 # ==================== Génération des graphiques ====================
 
 def tracer_metrique(
+    ax,
     label: str,
     cle_averaged: str,
     cle_callback: str,
     use_x_raw: bool,
     dossiers_env: list[str],
-    nom_env: str,
-) -> plt.Figure:
+) -> None:
     """
-    Génère un graphique pour une métrique avec tous les algorithmes superposés.
+    Trace une métrique sur l'axe fourni avec tous les algorithmes superposés.
 
     Chaque algorithme est représenté par sa courbe moyenne +- écart-type entre seeds.
     """
-    fig, ax = plt.subplots(figsize=(10, 5))
     couleurs = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
     for idx, dossier in enumerate(dossiers_env):
@@ -190,11 +189,9 @@ def tracer_metrique(
 
     ax.set_xlabel("Épisode")
     ax.set_ylabel(label)
-    ax.set_title(f"{label}: {nom_env}")
+    ax.set_title(label)
     ax.legend()
     ax.grid(True, alpha=0.3)
-    fig.tight_layout()
-    return fig
 
 
 def main():
@@ -216,23 +213,28 @@ def main():
         print("Aucun dossier valide trouvé. Vérifiez la liste DOSSIERS.")
         return
 
-    # Générer un graphique par environnement × métrique
+    # Générer une figure par environnement avec un grid de métriques (2 lignes x 4 colonnes)
     for nom_env, dossiers_env in groupes_env.items():
         print(f"\nEnvironnement : {ENVS_CONNUS[nom_env]} ({len(dossiers_env)} algorithme(s))")
-        for label, cle_averaged, cle_callback, use_x_raw in METRIQUES:
+        fig, axes = plt.subplots(2, 4, figsize=(22, 9))
+        axes = axes.flatten()  # Flatten to 1D array for easier iteration
+
+        for idx, (label, cle_averaged, cle_callback, use_x_raw) in enumerate(METRIQUES):
             try:
-                fig = tracer_metrique(
-                    label, cle_averaged, cle_callback, use_x_raw,
-                    dossiers_env, ENVS_CONNUS[nom_env],
+                ax = axes[idx]
+                tracer_metrique(
+                    ax, label, cle_averaged, cle_callback, use_x_raw, dossiers_env
                 )
-                # Nom de fichier : "{env}_{clé_métrique}.png"
-                nom_fichier = f"{nom_env}_{cle_averaged}.png"
-                chemin_sortie = os.path.join(FIGURES_DIR, nom_fichier)
-                fig.savefig(chemin_sortie, dpi=150, bbox_inches="tight")
-                plt.close(fig)
-                print(f"  Sauvegardé : {chemin_sortie}")
+                print(f"  Métrique {idx+1}/8 : {label} - OK")
             except Exception as e:
                 print(f"  [ERREUR] {label} - {nom_env} : {e}")
+
+        fig.tight_layout()
+        nom_fichier = f"{nom_env}.png"
+        chemin_sortie = os.path.join(FIGURES_DIR, nom_fichier)
+        fig.savefig(chemin_sortie, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        print(f"  Sauvegardé : {chemin_sortie}")
 
 
 if __name__ == "__main__":
