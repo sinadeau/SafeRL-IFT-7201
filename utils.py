@@ -1,7 +1,5 @@
 """
 Fonctions utilitaires.
-
-Une partie du code des fonctons a été générée par ChatGPT 5.3 et 5.4, et Claude Haiku 4.5.
 """
 import os
 import re
@@ -168,6 +166,9 @@ class QLearningMetricsCallback:
     Enregistre les mêmes métriques que MetricsCallback mais sans dépendre de Stable Baselines3.
     Cette classe accumule les informations pour chaque pas en mémoire et calcule les
     métriques agrégées lorsqu'un épisode se termine.
+
+    Cette fonction a été générée par Claude Haiku 4.5, avec des ajustements pour correspondre aux
+    métriques suivies par SB3MetricsCallback.
     """
 
     def __init__(self, verbose=0):
@@ -567,6 +568,7 @@ def eval_metrics_to_dataframe(averaged, std):
 
 
 # ======== Fonctions d'extraction et de visualisation de la politique apprise =========
+# Une partie du code des fonctons a été générée par ChatGPT 5.3 et 5.4
 
 # Correspondance actions -> symboles de direction
 ARROW_MAP = {
