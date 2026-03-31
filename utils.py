@@ -1,71 +1,24 @@
 """
 Fonctions utilitaires.
 """
-
+import os
+import re
+import math
+import glob
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 import gymnasium as gym
 import shutil
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
+from stable_baselines3 import PPO
 from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.logger import configure as sb3_configure
 
-# Correspondance actions -> symboles de direction
-ARROW_MAP = {
-    0: "←",  # Gauche
-    1: "↓",  # Bas
-    2: "→",  # Droite
-    3: "↑"   # Haut
-}
 
-def extract_policy_grid(env: gym.Env, model: BasePolicy) -> np.ndarray:
-    """
-    Extrait la politique apprise par le modèle sous forme de grille.
-    
-    Pour chaque état de l'environnement FrozenLake, récupère l'action préférentielle
-    du modèle et la représente par un symbole de direction. Les cases spéciales
-    (trous, objectif) restent identifiées.
-    
-    Args:
-        env: Environnement FrozenLake encapsulé
-        model: Modèle entraîné (ex. PPO, DQN) ayant une méthode predict()
-        
-    Returns:
-        np.ndarray: Grille 2D contenant les symboles de politique ou d'état spécial
-    """
-    # Récupérer la description de la carte
-    desc = env.unwrapped.desc.astype(str)
-    nrow, ncol = desc.shape
-    policy_grid = np.empty((nrow, ncol), dtype=object)
-    
-    # Parcourir tous les états
-    for s in range(nrow * ncol):
-        row, col = divmod(s, ncol)
-        cell = desc[row, col]
-        
-        # Garder les cases spéciales
-        if cell in ["H", "G"]:
-            policy_grid[row, col] = cell
-        else:
-            # Obtenir l'action préférentielle du modèle
-            action, _ = model.predict(s, deterministic=True)
-            policy_grid[row, col] = ARROW_MAP[int(action)]
-    
-    return policy_grid
-
-def print_policy(policy_grid: np.ndarray) -> None:
-    """
-    Affiche la politique apprise dans la console.
-    
-    Args:
-        policy_grid: Grille de politique obtenue via extract_policy_grid()
-    """
-    print("Politique apprise:")
-    for row in policy_grid:
-        print("  ".join(row))
 
 def moving_average(x, window=100):
     """
@@ -85,10 +38,6 @@ def moving_average(x, window=100):
           (pas de padding).
         - Chaque valeur retournée correspond à la moyenne des `window` points précédents.
     """
-    #Ancienne version simple (mais qui ne gère pas les NaN et peut retourner des valeurs plus courtes que x):
-    #if len(x) < window:
-    #    return x
-    #return np.convolve(x, np.ones(window)/window, mode="valid")
 
     x = np.asarray(x, dtype=float)
 
@@ -103,7 +52,44 @@ def moving_average(x, window=100):
 
     return out
 
-def get_moving_averages_with_x(data, window=30):
+def get_moving_averages_with_x(data, window=100):
+    """
+    Calcule les moyennes mobiles de plusieurs métriques d'entraînement RL
+    et retourne les axes associés pour la visualisation.
+
+    Cette fonction prend en entrée un dictionnaire contenant les métriques
+    par épisode (récompense, longueur, chutes, succès, etc.), puis applique
+    un lissage par moyenne mobile sur chacune d'elles.
+
+    Elle retourne également deux axes :
+    - x_raw : index des épisodes bruts
+    - x_ma : index aligné avec les moyennes mobiles (corrigé du décalage dû au window)
+
+    Args:
+        data (dict): Dictionnaire contenant les métriques par épisode avec les clés :
+            - "episode_rewards"
+            - "episode_lengths"
+            - "episode_lengths_given_success"
+            - "episode_falls"
+            - "episode_successes"
+            - "episode_risks"
+            - "episode_timeouts"
+            - "cum_falls"
+        window (int): Taille de la fenêtre pour la moyenne mobile
+
+    Returns:
+        tuple:
+            x_raw (np.ndarray): Index des épisodes (1 à N)
+            x_ma (np.ndarray): Index aligné avec les moyennes mobiles
+            reward_mean (np.ndarray): Moyenne mobile des récompenses
+            length_mean (np.ndarray): Moyenne mobile des longueurs d’épisodes
+            length_given_success_mean (np.ndarray): Moyenne mobile des longueurs conditionnelles au succès
+            fall_rate (np.ndarray): Moyenne mobile du taux de chute
+            success_rate (np.ndarray): Moyenne mobile du taux de succès
+            timeout_rate (np.ndarray): Moyenne mobile du taux de timeout
+            risk_mean (np.ndarray): Moyenne mobile du risque
+            cum_falls (np.ndarray): Nombre cumulatif de chutes (non lissé)
+    """
     rewards = np.array(data["episode_rewards"])
     lengths = np.array(data["episode_lengths"])
     episode_lengths_given_success = np.array(data["episode_lengths_given_success"])
@@ -594,3 +580,278 @@ def eval_metrics_to_dataframe(averaged, std):
     # Créer le DataFrame à partir des lignes
     df = pd.DataFrame(rows)
     return df
+
+
+#======== Fonctions d'extraction et de visualisation de la politique apprise =========
+# Une partie du code des fonctons suivantes a été générée par ChatGPT 5.3 et 5.4
+
+# Correspondance actions -> symboles de direction
+ARROW_MAP = {
+    0: "←",  # Gauche
+    1: "↓",  # Bas
+    2: "→",  # Droite
+    3: "↑"   # Haut
+}
+
+def extract_policy_grid(env: gym.Env, model: BasePolicy) -> np.ndarray:
+    """
+    Extrait la politique apprise par le modèle sous forme de grille.
+    
+    Pour chaque état de l'environnement FrozenLake, récupère l'action préférentielle
+    du modèle et la représente par un symbole de direction. Les cases spéciales
+    (trous, objectif) restent identifiées.
+    
+    Args:
+        env: Environnement FrozenLake encapsulé
+        model: Modèle entraîné (ex. PPO, DQN) ayant une méthode predict()
+        
+    Returns:
+        np.ndarray: Grille 2D contenant les symboles de politique ou d'état spécial
+    """
+    # Récupérer la description de la carte
+    desc = env.unwrapped.desc.astype(str)
+    nrow, ncol = desc.shape
+    policy_grid = np.empty((nrow, ncol), dtype=object)
+    
+    # Parcourir tous les états
+    for s in range(nrow * ncol):
+        row, col = divmod(s, ncol)
+        cell = desc[row, col]
+        
+        # Garder les cases spéciales
+        if cell in ["H", "G"]:
+            policy_grid[row, col] = cell
+        else:
+            # Obtenir l'action préférentielle du modèle
+            action, _ = model.predict(s, deterministic=True)
+            policy_grid[row, col] = ARROW_MAP[int(action)]
+    
+    return policy_grid
+
+def extract_policy_grid_from_q_table(env, q_table):
+    """
+    Extrait la politique optimale à partir d'une Q-table sous forme de grille.
+
+    Pour chaque état de l'environnement FrozenLake, sélectionne l'action
+    ayant la plus grande valeur dans la Q-table (argmax) et la représente
+    par un symbole de direction. Les cases spéciales (trous, objectif, départ)
+    sont conservées telles quelles.
+
+    Args:
+        env: Environnement FrozenLake encapsulé
+        q_table (np.ndarray): Tableau de taille (n_states, n_actions)
+                             contenant les valeurs Q
+
+    Returns:
+        list[list[str]]: Grille 2D contenant les symboles de politique
+                         ou les cases spéciales ("H", "G", "S")
+    """
+    base_env = env.unwrapped
+    desc = base_env.desc
+    nrow, ncol = desc.shape
+
+    action_map = {
+        0: "←",
+        1: "↓",
+        2: "→",
+        3: "↑"
+    }
+
+    policy_grid = []
+
+    for i in range(nrow):
+        row = []
+        for j in range(ncol):
+            state = i * ncol + j
+            tile = desc[i, j].decode() if isinstance(desc[i, j], bytes) else str(desc[i, j])
+
+            if tile in ["H", "G", "S"]:
+                row.append(tile)
+            else:
+                best_action = np.argmax(q_table[state])
+                row.append(action_map[best_action])
+        policy_grid.append(row)
+
+    return policy_grid
+
+
+def plot_policy(env, policy_grid, ax=None, title=None):
+    """
+    Affiche une politique sous forme de grille visuelle.
+
+    Chaque cellule de la grille correspond à un état de l'environnement :
+    - Les flèches indiquent l'action choisie par la politique
+    - Les cases spéciales sont colorées :
+        H (trou) -> bleu
+        G (objectif) -> vert
+        S (départ) -> jaune
+
+    Args:
+        env: Environnement FrozenLake encapsulé
+        policy_grid: Grille 2D contenant la politique (flèches ou symboles)
+        ax (matplotlib.axes.Axes, optional): Axe sur lequel dessiner la figure.
+                                             Si None, une nouvelle figure est créée.
+        title (str, optional): Titre à afficher au-dessus de la grille
+
+    Returns:
+        None
+    """
+    base_env = env.unwrapped
+    desc = base_env.desc
+    nrow, ncol = desc.shape
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(6, 6))
+
+    for i in range(nrow):
+        for j in range(ncol):
+            tile = desc[i, j].decode() if isinstance(desc[i, j], bytes) else str(desc[i, j])
+            action = str(policy_grid[i][j])
+
+            if tile == "H":
+                color = "lightblue"
+            elif tile == "G":
+                color = "lightgreen"
+            elif tile == "S":
+                color = "lightyellow"
+            else:
+                color = "white"
+
+            ax.add_patch(Rectangle((j, i), 1, 1, facecolor=color, edgecolor="black"))
+
+            x = j + 0.5
+            y = i + 0.5
+
+            if tile in ["H", "G", "S"]:
+                ax.text(x, y, tile, ha="center", va="center",
+                        fontsize=12, fontweight="bold")
+            else:
+                ax.text(x, y, action, ha="center", va="center",
+                        fontsize=12)
+
+    ax.set_xlim(0, ncol)
+    ax.set_ylim(nrow, 0)
+    ax.set_aspect("equal")
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+    if title is not None:
+        ax.set_title(title)
+
+
+
+
+def plot_all_PPO_policies_from_folder(env, folder="./ppo_10x10_custom", ncols=2, filename_suffix=""):
+    """
+    Charge plusieurs modèles PPO depuis un dossier et affiche leurs politiques
+    sous forme de grille de figures.
+
+    Les modèles doivent être sauvegardés au format .zip avec un nom du type
+    "model_X.zip". Les politiques sont extraites et affichées dans une figure
+    composée de plusieurs sous-graphiques.
+
+    Args:
+        env: Environnement FrozenLake utilisé pour l'évaluation
+        folder (str): Chemin vers le dossier contenant les modèles PPO
+        ncols (int): Nombre de colonnes dans la grille de sous-figures
+        filename_suffix (str): Suffixe ajouté au nom du fichier sauvegardé
+
+    Returns:
+        None
+    """
+    model_paths = glob.glob(os.path.join(folder, "model_*.zip"))
+
+    if len(model_paths) == 0:
+        raise ValueError(f"Aucun fichier model_*.zip trouvé dans {folder}")
+
+    def extract_model_number(path):
+        match = re.search(r"model_(\d+)\.zip$", os.path.basename(path))
+        return int(match.group(1)) if match else float("inf")
+
+    model_paths = sorted(model_paths, key=extract_model_number)
+
+    n_models = len(model_paths)
+    nrows = math.ceil(n_models / ncols)
+
+    cell_size = 3
+    fig_width = ncols * cell_size
+    fig_height = nrows * cell_size + 0.5 * nrows
+
+    fig, axes = plt.subplots(
+        nrows=nrows,
+        ncols=ncols,
+        figsize=(fig_width, fig_height)
+    )
+
+    axes = np.array(axes).reshape(-1)
+
+    for ax, model_path in zip(axes, model_paths):
+        model = PPO.load(model_path, env=env)
+        policy_grid = extract_policy_grid(env, model)
+
+        model_name = os.path.basename(model_path).replace(".zip", "")
+        plot_policy(env, policy_grid, ax=ax, title=model_name)
+
+    for ax in axes[n_models:]:
+        ax.axis("off")
+
+    plt.tight_layout()
+    plt.savefig(rf".\Figures\PPO_policies_{filename_suffix}.png", dpi=300, bbox_inches='tight')
+    plt.show()
+
+def plot_all_q_learning_policies_from_folder(env, folder="./q_learning_10x10_custom", ncols=2, filename_suffix=""):
+    """
+    Charge plusieurs Q-tables sauvegardées au format .npy et affiche les
+    politiques correspondantes sous forme de grille de figures.
+
+    Pour chaque fichier, la politique est reconstruite en prenant l'action
+    de valeur maximale (argmax) pour chaque état.
+
+    Args:
+        env: Environnement FrozenLake utilisé pour l'évaluation
+        folder (str): Chemin vers le dossier contenant les fichiers .npy
+        ncols (int): Nombre de colonnes dans la grille de sous-figures
+        filename_suffix (str): Suffixe ajouté au nom du fichier sauvegardé
+
+    Returns:
+        None
+    """
+    model_paths = glob.glob(os.path.join(folder, "*.npy"))
+
+    if len(model_paths) == 0:
+        raise ValueError(f"Aucun fichier .npy trouvé dans {folder}")
+
+    def extract_model_number(path):
+        match = re.search(r"(\d+)", os.path.basename(path))
+        return int(match.group(1)) if match else float("inf")
+
+    model_paths = sorted(model_paths, key=extract_model_number)
+
+    n_models = len(model_paths)
+    nrows = math.ceil(n_models / ncols)
+    
+    cell_size = 3
+    fig_width = ncols * cell_size
+    fig_height = nrows * cell_size + 0.5 * nrows 
+
+    fig, axes = plt.subplots(
+        nrows=nrows,
+        ncols=ncols,
+        figsize=(fig_width, fig_height)
+    )
+
+    axes = np.array(axes).reshape(-1)
+
+    for ax, model_path in zip(axes, model_paths):
+        q_table = np.load(model_path)
+        policy_grid = extract_policy_grid_from_q_table(env, q_table)
+
+        model_name = os.path.basename(model_path).replace(".npy", "")
+        plot_policy(env, policy_grid, ax=ax, title=model_name)
+
+    for ax in axes[n_models:]:
+        ax.axis("off")
+
+    plt.tight_layout()
+    plt.savefig(rf".\Figures\Q_learning_policies_{filename_suffix}.png", dpi=300, bbox_inches='tight')
+    plt.show()
