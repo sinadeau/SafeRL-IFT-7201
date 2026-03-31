@@ -1,5 +1,7 @@
 """
 Fonctions utilitaires.
+
+Une partie du code des fonctons a été générée par ChatGPT 5.3 et 5.4, et Claude Haiku 4.5.
 """
 import os
 import re
@@ -19,6 +21,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.logger import configure as sb3_configure
 
 
+# ======== Fonctions de moyenne =========
 
 def moving_average(x, window=100):
     """
@@ -117,31 +120,46 @@ def get_moving_averages_with_x(data, window=100):
 
     return x_raw, x_ma, reward_mean, length_mean, length_given_success_mean,fall_rate, success_rate, timeout_rate, risk_mean, cum_falls
 
-def compute_rollout_metrics(callback: 'QLearningMetricsCallback') -> dict:
+def average_smoothed_metrics_across_runs(callbacks_data_list, window=30):
     """
-    Calcule les métriques rollout moyennes à partir des données d'entraînement.
-    
+    Lisse les métriques de chaque répétition puis les moyenne sur toutes les répétitions.
+
     Args:
-        callback: Instance de QLearningMetricsCallback contenant les métriques collectées
-        
+        callbacks_data_list: Liste de dicts de métriques (de load_callback_metrics_npz)
+        window: Taille de la fenêtre de lissage
+
     Returns:
-        dict: Dictionnaire contenant les métriques rollout moyennes:
-            - ep_len_mean: Longueur moyenne des épisodes
-            - ep_rew_mean: Récompense moyenne des épisodes
-            - success_rate: Taux de succès (proportion d'épisodes avec succès)
+        dict: Métriques lissées et moyennées, avec les clés:
+              x_ma, reward_mean, length_mean, fall_rate, timeout_rate, risk_mean,
+              x_raw, cum_falls
     """
-    if not callback.episode_lengths:
-        return {"ep_len_mean": 0.0, "ep_rew_mean": 0.0, "success_rate": 0.0}
-    
-    ep_len_mean = np.mean(callback.episode_lengths)
-    ep_rew_mean = np.mean(callback.episode_rewards)
-    success_rate = np.mean(callback.episode_successes)
-    
+    smoothed, raw_cf = [], []
+    for data in callbacks_data_list:
+        x_raw, x_ma, rew, length, length_given_success, falls, success, timeout, risk, cf = \
+            get_moving_averages_with_x(data, window=window)
+        smoothed.append((x_ma, rew, length, length_given_success, falls, success, timeout, risk))
+        raw_cf.append((x_raw, cf))
+
+    # Aligner toutes les séries sur la longueur minimale (sécurité si les longueurs diffèrent)
+    min_ma = min(len(r[1]) for r in smoothed)
+    min_raw = min(len(r[1]) for r in raw_cf)
+
     return {
-        "ep_len_mean": ep_len_mean,
-        "ep_rew_mean": ep_rew_mean,
-        "success_rate": success_rate
+        "x_ma":         smoothed[0][0][:min_ma].astype(int),
+        "reward_mean":  np.mean([r[1][:min_ma] for r in smoothed], axis=0),
+        "length_mean":  np.mean([r[2][:min_ma] for r in smoothed], axis=0),
+        "length_given_success_mean": np.nanmean([r[3][:min_ma] for r in smoothed], axis=0),
+        "fall_rate":    np.mean([r[4][:min_ma] for r in smoothed], axis=0),
+        "success_rate": np.mean([r[5][:min_ma] for r in smoothed], axis=0),
+        "timeout_rate": np.mean([r[6][:min_ma] for r in smoothed], axis=0),
+        "risk_mean":    np.mean([r[7][:min_ma] for r in smoothed], axis=0),
+
+        "x_raw":        raw_cf[0][0][:min_raw].astype(int),
+        "cum_falls":    np.mean([r[1][:min_raw] for r in raw_cf], axis=0),
     }
+
+
+# ======== Calcul des métriques =========
 
 class QLearningMetricsCallback:
     """
@@ -345,43 +363,8 @@ def run_training_repetitions(train_fn, n_repetitions, base_seed):
         futures = [executor.submit(train_fn, seed) for seed in seeds]
         return [f.result() for f in futures]
 
-def average_smoothed_metrics_across_runs(callbacks_data_list, window=30):
-    """
-    Lisse les métriques de chaque répétition puis les moyenne sur toutes les répétitions.
 
-    Args:
-        callbacks_data_list: Liste de dicts de métriques (de load_callback_metrics_npz)
-        window: Taille de la fenêtre de lissage
-
-    Returns:
-        dict: Métriques lissées et moyennées, avec les clés:
-              x_ma, reward_mean, length_mean, fall_rate, timeout_rate, risk_mean,
-              x_raw, cum_falls
-    """
-    smoothed, raw_cf = [], []
-    for data in callbacks_data_list:
-        x_raw, x_ma, rew, length, length_given_success, falls, success, timeout, risk, cf = \
-            get_moving_averages_with_x(data, window=window)
-        smoothed.append((x_ma, rew, length, length_given_success, falls, success, timeout, risk))
-        raw_cf.append((x_raw, cf))
-
-    # Aligner toutes les séries sur la longueur minimale (sécurité si les longueurs diffèrent)
-    min_ma = min(len(r[1]) for r in smoothed)
-    min_raw = min(len(r[1]) for r in raw_cf)
-
-    return {
-        "x_ma":         smoothed[0][0][:min_ma].astype(int),
-        "reward_mean":  np.mean([r[1][:min_ma] for r in smoothed], axis=0),
-        "length_mean":  np.mean([r[2][:min_ma] for r in smoothed], axis=0),
-        "length_given_success_mean": np.nanmean([r[3][:min_ma] for r in smoothed], axis=0),
-        "fall_rate":    np.mean([r[4][:min_ma] for r in smoothed], axis=0),
-        "success_rate": np.mean([r[5][:min_ma] for r in smoothed], axis=0),
-        "timeout_rate": np.mean([r[6][:min_ma] for r in smoothed], axis=0),
-        "risk_mean":    np.mean([r[7][:min_ma] for r in smoothed], axis=0),
-
-        "x_raw":        raw_cf[0][0][:min_raw].astype(int),
-        "cum_falls":    np.mean([r[1][:min_raw] for r in raw_cf], axis=0),
-    }
+# ======== Fonctions d'enregistrement =========
 
 def log_run_metrics_to_tensorboard(callback_data, tensorboard_dir):
     """
@@ -409,7 +392,6 @@ def log_run_metrics_to_tensorboard(callback_data, tensorboard_dir):
         logger.record("custom/cumulative_falls", float(callback_data["cum_falls"][i]))
         logger.dump(step=i)
     logger.close()
-
 
 def log_averaged_metrics_to_tensorboard(averaged_metrics, tensorboard_dir):
     """
@@ -442,6 +424,8 @@ def log_averaged_metrics_to_tensorboard(averaged_metrics, tensorboard_dir):
 
     logger.close()
 
+
+# ======== Fonctions d'évaluation =========
 
 def evaluate_policy_with_metrics(model, env, n_eval_episodes=100, deterministic=True):
     """
@@ -582,8 +566,7 @@ def eval_metrics_to_dataframe(averaged, std):
     return df
 
 
-#======== Fonctions d'extraction et de visualisation de la politique apprise =========
-# Une partie du code des fonctons suivantes a été générée par ChatGPT 5.3 et 5.4
+# ======== Fonctions d'extraction et de visualisation de la politique apprise =========
 
 # Correspondance actions -> symboles de direction
 ARROW_MAP = {
@@ -674,7 +657,6 @@ def extract_policy_grid_from_q_table(env, q_table):
 
     return policy_grid
 
-
 def plot_policy(env, policy_grid, ax=None, title=None):
     """
     Affiche une politique sous forme de grille visuelle.
@@ -737,9 +719,6 @@ def plot_policy(env, policy_grid, ax=None, title=None):
 
     if title is not None:
         ax.set_title(title)
-
-
-
 
 def plot_all_PPO_policies_from_folder(env, folder="./ppo_10x10_custom", ncols=2, filename_suffix=""):
     """
