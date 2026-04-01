@@ -347,7 +347,7 @@ def load_callback_metrics_npz(filepath):
     data = np.load(filepath)
     return {key: data[key] for key in data.files}
 
-def run_training_repetitions(train_fn, n_repetitions, base_seed):
+def run_training_repetitions(train_fn, n_repetitions, base_seed, device):
     """
     Lance n_repetitions d'entraînement en parallèle via un pool de threads.
 
@@ -355,14 +355,24 @@ def run_training_repetitions(train_fn, n_repetitions, base_seed):
         train_fn: Fonction prenant (seed) et retournant les données du callback (dict)
         n_repetitions: Nombre de répétitions
         base_seed: Graine de base ; la répétition i utilise base_seed + i
+        device: objet torch.device
 
     Returns:
         list[dict]: Données de callback pour chaque répétition, dans l'ordre
     """
     seeds = [base_seed + i for i in range(n_repetitions)]
-    with ThreadPoolExecutor(max_workers=n_repetitions) as executor:
-        futures = [executor.submit(train_fn, seed) for seed in seeds]
-        return [f.result() for f in futures]
+
+    if device.type == "cpu":  # parallèle CPU
+        with ThreadPoolExecutor(max_workers=n_repetitions) as executor:
+            futures = [executor.submit(train_fn, seed) for seed in seeds]
+            return [f.result() for f in futures]
+    elif device.type == "cuda": #GPU pas en parallèle
+        results = []
+        for seed in seeds:
+            results.append(train_fn(seed))
+        return results
+        
+       
 
 
 # ======== Fonctions d'enregistrement =========

@@ -149,6 +149,7 @@ EPSILON = 1           # Probabilité d'exploration initiale
 EPSILON_MIN = 0.001   # Probabilité d'exploration minimale
 QLEARNING_VERBOSE = 1 # Niveau de verbosité (1 = afficher les mises à jour)
 
+DEVICE = torch.device('cpu')
 
 # ==================== ENTRAÎNEMENT D'UNE RÉPÉTITION ====================
 
@@ -192,7 +193,7 @@ def main():
     output_dir = f"q_learning_{ENV_TYPE}"
 
     # Lancer toutes les répétitions en parallèle (ThreadPoolExecutor)
-    results = run_training_repetitions(train_one_q_learning, N_REPETITIONS, BASE_SEED)
+    results = run_training_repetitions(train_one_q_learning, N_REPETITIONS, BASE_SEED, DEVICE)
     callbacks_data, eval_data = zip(*results)
     callbacks_data = list(callbacks_data)
     eval_data = list(eval_data)

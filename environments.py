@@ -84,7 +84,7 @@ def create_env(
         - reward_schedule = (1, -0.5, -0.01) # (Goal, Hole, Frozen)
         """
 
-        reward_schedule = (1, -0.5, -0.01) 
+        reward_schedule = (1, -1, -0.01) 
 
         # Définition de la grille
         np.random.seed(seed)

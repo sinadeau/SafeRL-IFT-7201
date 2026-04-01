@@ -14,14 +14,17 @@ from stable_baselines3.common.callbacks import StopTrainingOnMaxEpisodes
 from stable_baselines3 import PPO
 import torch
 
+DEVICE = torch.device('cpu')
+#DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu') #PPO est plus lent sur cuda!
+
 # ==================== CONFIGURATION ====================
 
 # Paramètres de l'expérience (entraînement et environnement)
 SUCCESS_RATE = 9 / 10.0        # Probabilité de ne pas glisser (slippery env)
-MAX_EPISODE_STEPS = 60         # Durée maximale d'un épisode (nombre de pas)
+MAX_EPISODE_STEPS = 120         # Durée maximale d'un épisode (nombre de pas)
 TOTAL_EPISODES = 150_000       # Nombre total d'épisodes par répétition
 ENV_TYPE = "16x16_random"      # Type d'environnement: "8x8_default" ou "10x10_custom"
-BASE_SEED = 42                 # Graine de base ; la répétition i utilise BASE_SEED + i
+BASE_SEED = 40                 # Graine de base ; la répétition i utilise BASE_SEED + i
 N_REPETITIONS = 10             # Nombre de répétitions d'entraînement
 WINDOW = 100                   # Fenêtre de lissage pour les métriques moyennées
 
@@ -48,7 +51,7 @@ def train_one_ppo(seed):
     
     model = PPO(PPO_POLICY, env, verbose=PPO_VERBOSE,
                 tensorboard_log=f"./{output_dir}/tensorboard/", seed=seed, policy_kwargs=policy_kwargs,
-                device="cpu")
+                device=DEVICE)
 
     # Entraînement avec callback pour collecter les métriques et arrêter après un nombre d'épisodes
     callback = SB3MetricsCallback()
@@ -75,10 +78,10 @@ def train_one_ppo(seed):
 
 def main():
     """Lance N_REPETITIONS entraînements PPO en parallèle et calcule les métriques moyennées."""
-    print(f"Entraînement PPO — {N_REPETITIONS} répétition(s), environnement: {ENV_TYPE}")
+    print(f"Entraînement PPO — {N_REPETITIONS} répétition(s), environnement: {ENV_TYPE}, device: {DEVICE}")
 
     # Lancer toutes les répétitions en parallèle (ThreadPoolExecutor)
-    results = run_training_repetitions(train_one_ppo, N_REPETITIONS, BASE_SEED)
+    results = run_training_repetitions(train_one_ppo, N_REPETITIONS, BASE_SEED, DEVICE)
     callbacks_data, eval_data = zip(*results)
     callbacks_data = list(callbacks_data)
     eval_data = list(eval_data)
