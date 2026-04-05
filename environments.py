@@ -20,7 +20,7 @@ def create_env(
     Factory pour créer un environnement FrozenLake selon le type spécifié.
     
     Args:
-        env_type: Type d'environnement ("8x8_default" ou "10x10_custom")
+        env_type: Type d'environnement ("8x8_default", "10x10_custom" ou "16x16_random)
         max_episode_steps: Durée maximale d'un épisode (nombre de pas)
         success_rate: Probabilité de ne pas glisser (1.0 = déterministe)
         seed: graine pour la génération aléatoire

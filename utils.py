@@ -17,6 +17,7 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.logger import configure as sb3_configure
+from environments import create_env
 
 
 # ======== Fonctions de moyenne =========
@@ -732,7 +733,7 @@ def plot_policy(env, policy_grid, ax=None, title=None):
     if title is not None:
         ax.set_title(title)
 
-def plot_all_PPO_policies_from_folder(env, folder="./ppo_10x10_custom", ncols=2, filename_suffix=""):
+def plot_all_PPO_policies_from_folder(env_type, folder="./ppo_10x10_custom", ncols=2):
     """
     Charge plusieurs modèles PPO depuis un dossier et affiche leurs politiques
     sous forme de grille de figures.
@@ -742,10 +743,9 @@ def plot_all_PPO_policies_from_folder(env, folder="./ppo_10x10_custom", ncols=2,
     composée de plusieurs sous-graphiques.
 
     Args:
-        env: Environnement FrozenLake utilisé pour l'évaluation
+        env_type: Type d'environnement ("8x8_default", "10x10_custom" ou "16x16_random)
         folder (str): Chemin vers le dossier contenant les modèles PPO
         ncols (int): Nombre de colonnes dans la grille de sous-figures
-        filename_suffix (str): Suffixe ajouté au nom du fichier sauvegardé
 
     Returns:
         None
@@ -777,6 +777,11 @@ def plot_all_PPO_policies_from_folder(env, folder="./ppo_10x10_custom", ncols=2,
     axes = np.array(axes).reshape(-1)
 
     for ax, model_path in zip(axes, model_paths):
+
+        #Créer l'environnement
+        seed = extract_model_number(model_path)
+        env = create_env(env_type=env_type, seed=seed)
+
         model = PPO.load(model_path, env=env)
         policy_grid = extract_policy_grid(env, model)
 
@@ -787,10 +792,10 @@ def plot_all_PPO_policies_from_folder(env, folder="./ppo_10x10_custom", ncols=2,
         ax.axis("off")
 
     plt.tight_layout()
-    plt.savefig(rf".\Figures\PPO_policies_{filename_suffix}.png", dpi=300, bbox_inches='tight')
+    plt.savefig(rf".\Figures\PPO_policies_{env_type}.png", dpi=300, bbox_inches='tight')
     plt.show()
 
-def plot_all_q_learning_policies_from_folder(env, folder="./q_learning_10x10_custom", ncols=2, filename_suffix=""):
+def plot_all_q_learning_policies_from_folder(env_type, folder="./q_learning_10x10_custom", ncols=2):
     """
     Charge plusieurs Q-tables sauvegardées au format .npy et affiche les
     politiques correspondantes sous forme de grille de figures.
@@ -799,14 +804,15 @@ def plot_all_q_learning_policies_from_folder(env, folder="./q_learning_10x10_cus
     de valeur maximale (argmax) pour chaque état.
 
     Args:
-        env: Environnement FrozenLake utilisé pour l'évaluation
+        env_type: Type d'environnement ("8x8_default", "10x10_custom" ou "16x16_random)
         folder (str): Chemin vers le dossier contenant les fichiers .npy
         ncols (int): Nombre de colonnes dans la grille de sous-figures
-        filename_suffix (str): Suffixe ajouté au nom du fichier sauvegardé
 
     Returns:
         None
-    """
+    """     
+    
+    
     model_paths = glob.glob(os.path.join(folder, "*.npy"))
 
     if len(model_paths) == 0:
@@ -834,6 +840,11 @@ def plot_all_q_learning_policies_from_folder(env, folder="./q_learning_10x10_cus
     axes = np.array(axes).reshape(-1)
 
     for ax, model_path in zip(axes, model_paths):
+
+        #Créer l'environnement
+        seed = extract_model_number(model_path)
+        env = create_env(env_type=env_type, seed=seed)
+
         q_table = np.load(model_path)
         policy_grid = extract_policy_grid_from_q_table(env, q_table)
 
@@ -844,5 +855,5 @@ def plot_all_q_learning_policies_from_folder(env, folder="./q_learning_10x10_cus
         ax.axis("off")
 
     plt.tight_layout()
-    plt.savefig(rf".\Figures\Q_learning_policies_{filename_suffix}.png", dpi=300, bbox_inches='tight')
+    plt.savefig(rf".\Figures\Q_learning_policies_{env_type}.png", dpi=300, bbox_inches='tight')
     plt.show()
