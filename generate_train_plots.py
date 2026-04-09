@@ -216,7 +216,7 @@ def main():
     num_metrics = len(METRIQUES)
     num_envs = len(groupes_env)
     height = max(4 + num_metrics * 1.5, 10)  # Hauteur minimale de 10, ajouter 1.5 par métrique
-    fig, axes = plt.subplots(num_metrics, num_envs, figsize=(4 * num_envs, height))
+    fig, axes = plt.subplots(num_metrics, num_envs, figsize=(4 * num_envs, height), sharex='col', sharey='row')
     
     # Gérer le cas où il y a seulement 1 métrique ou 1 environnement (les axes pourraient ne pas être 2D)
     if num_metrics == 1 or num_envs == 1:
