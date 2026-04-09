@@ -4,6 +4,7 @@ Entraînement d'une politique Q-learning pour l'environnement FrozenLake.
 
 import os
 import numpy as np
+import torch
 from tqdm import tqdm
 from environments import create_env
 from utils import (QLearningMetricsCallback, save_callback_metrics_npz,
