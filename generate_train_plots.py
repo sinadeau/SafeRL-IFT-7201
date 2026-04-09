@@ -49,8 +49,9 @@ ENVS_CONNUS = {
 #   - use_x_raw          : True -> utiliser x_raw sans lissage (ex: cum_falls)
 #                          False -> utiliser x_ma avec moyenne mobile
 METRIQUES = [
-    ("Récompense moyenne",         "reward_mean",               "episode_rewards",              False),
+    ("Récompense moyenne",         "reward_mean",               "episode_rewards",               False),
     ("Longueur d'épisode (succès)","length_given_success_mean", "episode_lengths_given_success", False),
+    ("Taux de succès",             "success_rate",              "episode_successes",             False),
     ("Taux de chutes",             "fall_rate",                 "episode_falls",                 False),
     ("Risque moyen",               "risk_mean",                 "episode_risks",                 False),
 ]
