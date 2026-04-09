@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 
 def create_env(
     env_type: str,
+    reward_type: str = "MDP", 
+    hole_cost: float = 1,
     max_episode_steps: int = 60,
     success_rate: float = 0.9,
     seed: int = 42
@@ -21,6 +23,8 @@ def create_env(
     
     Args:
         env_type: Type d'environnement ("8x8_default", "10x10_custom" ou "16x16_random)
+        reward_type: "MDP" ou "CMDP". Si "CMDP", la récompense de tomber dans un trou est de 0 pour le dissocier de la fonction de récompense
+        hole_cost: coût utilisé pour si reward_type = "CMDP".
         max_episode_steps: Durée maximale d'un épisode (nombre de pas)
         success_rate: Probabilité de ne pas glisser (1.0 = déterministe)
         seed: graine pour la génération aléatoire
@@ -34,10 +38,16 @@ def create_env(
         - Grille 8x8
         - Trous (H) positionnés stratégiquement
         - Objectif (G) défini
-        - reward_schedule = (1, -0.1, -0.01)  # (Goal, Hole, Frozen)
+        - reward_schedule = (1, -0.1, -0.01)  # (Goal, Hole, Frozen) pour un MDP
+        (pour un CMDP la récompense de tomber dans un trou est de 0 pour le dissocier de la fonction de récompense)
         """
 
-        reward_schedule = (1, -0.1, -0.01)
+        if reward_type == "MDP":
+            reward_schedule = (1, -0.1, -0.01)
+        elif reward_type == "CMDP":
+            reward_schedule = (1, 0, -0.01)
+        else:
+            raise ValueError(f"Type de reward schedule inconnu: {reward_type}")
 
         desc = [
             "SFFFFFFF",
@@ -51,15 +61,20 @@ def create_env(
         ]
     elif env_type == "10x10_custom":
         """
-        Configuration adaptée pour tester les performances sur des environnements 
-        plus grands avec une distribution différente de trous.
+        Configuration adaptée pour tester le compromis entre longueur des chemins vers le but et le risque.
 
         - Grille 10x10
         - Configuration déduite empiriquement
         - reward_schedule = (1, -0.5, -0.01)  # (Goal, Hole, Frozen)
+        (pour un CMDP la récompense de tomber dans un trou est de 0 pour le dissocier de la fonction de récompense)
         """
 
-        reward_schedule = (1, -0.5, -0.01) 
+        if reward_type == "MDP":
+            reward_schedule = (1, -0.5, -0.01)
+        elif reward_type == "CMDP":
+            reward_schedule = (1, 0, -0.01)
+        else:
+            raise ValueError(f"Type de reward schedule inconnu: {reward_type}")
 
         desc = [
             "SFFFFFFFFF",
@@ -82,9 +97,15 @@ def create_env(
         - Trous positionnés aléatoirement avec une densité de 15%
         - Objectif placé dans un coin opposé à la position de départ
         - reward_schedule = (1, -0.5, -0.01) # (Goal, Hole, Frozen)
+        (pour un CMDP la récompense de tomber dans un trou est de 0 pour le dissocier de la fonction de récompense)
         """
 
-        reward_schedule = (1, -1, -0.01) 
+        if reward_type == "MDP":
+            reward_schedule = (1, -1, -0.01)
+        elif reward_type == "CMDP":
+            reward_schedule = (1, 0, -0.01)
+        else:
+            raise ValueError(f"Type de reward schedule inconnu: {reward_type}")
 
         # Définition de la grille
         np.random.seed(seed)
@@ -111,10 +132,10 @@ def create_env(
         is_slippery=True,
         success_rate=success_rate,
         reward_schedule=reward_schedule,
-        render_mode="rgb_array"
+        render_mode="rgb_array",
+        max_episode_steps=max_episode_steps
     )
-    env = TimeLimit(env, max_episode_steps=max_episode_steps)
-    env = FrozenLakeInfoWrapper(env)
+    env = FrozenLakeInfoWrapper(env, hole_cost = hole_cost)
     env = Monitor(env) #Pour log métriques standard dans tensorboard
     env.reset(seed=seed)
     
@@ -138,21 +159,24 @@ class FrozenLakeInfoWrapper(gym.Wrapper):
             - is_success (bool) : True si l'agent a atteint l'objectif
             - is_timeout (bool) : True si l'épisode est terminé par dépassement du nombre de pas
             - risk (int) : niveau de risque de la case courante
+            - cost(float) : coût de la case courante, utilisé seulement pour un CMDP
 
         Args:
             env (gym.Env): Environnement FrozenLake à encapsuler
+            hole_cost: coût de tomber dans un trou, utilisé seulement pour un CMDP.
 
         Returns:
             gym.Env: Environnement enrichi avec des informations supplémentaires dans `info`
     """
 
-    def __init__(self, env):
+    def __init__(self, env, hole_cost):
         super().__init__(env)
 
         base_env = env.unwrapped
         self.desc = base_env.desc
         self.desc_str = self.desc.astype(str)
         self.nrow, self.ncol = self.desc.shape
+        self.hole_cost = hole_cost
 
         # Pré-calcul du risque pour chaque case        
         self.risk_map = np.zeros((self.nrow, self.ncol), dtype=np.int32)
@@ -193,6 +217,12 @@ class FrozenLakeInfoWrapper(gym.Wrapper):
                 info["is_fall"] = True
             elif tile == "G":
                 info["is_success"] = True
+
+        #Ajouter le coût dans info
+        info["cost"] = self.hole_cost if info["is_fall"] else 0.0
+
+        #Autre version possible du coût
+        #info["cost"] = hole_cost if info["is_fall"] else beta * (info["risk"] / 6.0)
 
         return obs, reward, terminated, truncated, info
 

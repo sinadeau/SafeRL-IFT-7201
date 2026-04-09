@@ -21,9 +21,9 @@ DEVICE = torch.device('cpu')
 
 # Paramètres de l'expérience (entraînement et environnement)
 SUCCESS_RATE = 9 / 10.0        # Probabilité de ne pas glisser (slippery env)
-MAX_EPISODE_STEPS = 120         # Durée maximale d'un épisode (nombre de pas)
+MAX_EPISODE_STEPS = 150         # Durée maximale d'un épisode (nombre de pas)
 TOTAL_EPISODES = 150_000       # Nombre total d'épisodes par répétition
-ENV_TYPE = "16x16_random"      # Type d'environnement: "8x8_default" ou "10x10_custom"
+ENV_TYPE = "10x10_custom"      # Type d'environnement: "8x8_default", "10x10_custom" ou "16x16_random"
 BASE_SEED = 40                 # Graine de base ; la répétition i utilise BASE_SEED + i
 N_REPETITIONS = 10             # Nombre de répétitions d'entraînement
 WINDOW = 100                   # Fenêtre de lissage pour les métriques moyennées
