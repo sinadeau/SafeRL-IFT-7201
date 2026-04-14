@@ -32,7 +32,7 @@ from stable_baselines3.common.vec_env import VecEnv, VecNormalize
 # ==================== [P3O] BUFFER AVEC COÛTS ====================
 
 class CostRolloutBufferSamples(NamedTuple):
-    """Échantillons du buffer incluant les données de coût."""
+    """Échantillons (mini-batch) du buffer incluant les données de coût."""
     observations: th.Tensor
     actions: th.Tensor
     old_values: th.Tensor
@@ -87,12 +87,12 @@ class CostRolloutBuffer(RolloutBuffer):
 
     def compute_returns_and_advantage(self, last_values: th.Tensor, dones: np.ndarray,
                                        last_cost_values: th.Tensor = None) -> None:
-        """Calcule les retours GAE pour les récompenses ET les coûts."""
-        super().compute_returns_and_advantage(last_values, dones)
+        """Calcule les retours GAE (Generalized Advantage Estimation) pour les récompenses ET les coûts."""
+        super().compute_returns_and_advantage(last_values, dones) #Retours GAE pour les récompenses
 
         # [P3O] GAE pour les coûts (mêmes gamma/lambda que pour les récompenses)
         if last_cost_values is not None:
-            last_cv = last_cost_values.clone().cpu().numpy().flatten()
+            last_cv = last_cost_values.clone().cpu().numpy().flatten() #estimation de la valeur de coût au dernier pas de temps précédent du buffer (un pour chaque environnement)
             last_gae_lam = 0
             for step in reversed(range(self.buffer_size)):
                 if step == self.buffer_size - 1:
@@ -292,6 +292,7 @@ class P3O(PPO):
             activation_fn=self.policy.activation_fn,
         ).to(self.device)
 
+        # Ici l'optimiseur ne mettra pas à jour les paramètres du feature_extractor car il ne contient aucun paramètres à entraîner (one-hot vector et flatten)
         self.cost_critic_optimizer = self.policy.optimizer_class(
             self.cost_critic.parameters(),
             lr=self.learning_rate,
@@ -304,6 +305,7 @@ class P3O(PPO):
 
     def _predict_cost_values(self, obs: th.Tensor) -> th.Tensor:
         """[P3O] Prédit V_c(s) en réutilisant l'extracteur de features de la politique."""
+        """Dans notre cas les features sont simplement un one-hot vector représentant la case sur la grille, et il n'y a pas de réseau extracteur de features."""
         features = self.policy.extract_features(obs, self.policy.vf_features_extractor)
         return self.cost_critic(features)
 
@@ -391,7 +393,7 @@ class P3O(PPO):
                         # [P3O] Bootstrapping du coût
                         terminal_cost_value = self._predict_cost_values(terminal_obs)[0]
                     rewards[idx] += self.gamma * terminal_value
-                    costs[idx] += self.gamma * terminal_cost_value.item()
+                    costs[idx] += self.gamma * terminal_cost_value.item() #[P3O]
 
             # [P3O] Ajout au buffer avec les coûts
             rollout_buffer.add(
@@ -427,7 +429,7 @@ class P3O(PPO):
         Mise à jour de la politique avec la pénalité de coût P3O.
         
         [P3O] Différences par rapport à PPO:
-        - Calcul de la loss de coût: kappa * ReLU(surr_cost_adv + Jc)
+        - Calcul de la loss de coût: L_cost = kappa * ReLU(surr_cost_adv + Jc)
         - Mise à jour du critique de coût (loss MSE séparée)
         - La loss totale de l'acteur est: L_ppo + L_cost
         """
@@ -439,6 +441,7 @@ class P3O(PPO):
             param_group["lr"] = self.policy.optimizer.param_groups[0]["lr"]
 
         clip_range = self.clip_range(self._current_progress_remaining)
+        # Optional: clip range for the value function (non utilisé et non implémenté pour la fonction de coût)
         if self.clip_range_vf is not None:
             clip_range_vf = self.clip_range_vf(self._current_progress_remaining)
 
@@ -485,7 +488,7 @@ class P3O(PPO):
 
                 if self.clip_range_vf is None:
                     values_pred = values
-                else:
+                else: #(clipping pour la fonction de valeur non utilisé et non implémenté pour la fonction de coût)
                     values_pred = rollout_data.old_values + th.clamp(
                         values - rollout_data.old_values, -clip_range_vf, clip_range_vf
                     )
@@ -499,7 +502,7 @@ class P3O(PPO):
                     entropy_loss = -th.mean(entropy)
                 entropy_losses.append(entropy_loss.item())
 
-                # === [P3O] Loss de coût ===
+                # === [P3O] Loss de coût (pour la politique apprise) ===
                 cost_adv = rollout_data.cost_advantages
                 # [P3O] Normalisation des avantages de coût (même approche que pour les récompenses)
                 if self.normalize_advantage and len(cost_adv) > 1:
@@ -517,10 +520,11 @@ class P3O(PPO):
                 cost_value_losses.append(cost_value_loss.item())
 
                 # === Loss totale: PPO + pénalité de coût P3O ===
-                loss = (policy_loss
-                        + self.ent_coef * entropy_loss
-                        + self.vf_coef * value_loss
-                        + cost_loss)  # [P3O]
+                # Critique updaté en même temps que l'acteur avec un gradient pondéré (vf_coef) et un optimizer partagé
+                loss = (policy_loss # Politique
+                        + self.ent_coef * entropy_loss # Politique
+                        + cost_loss # [P3O] Politique
+                        + self.vf_coef * value_loss) # Critique de récompense
 
                 # Divergence KL approximative pour arrêt anticipé
                 with th.no_grad():

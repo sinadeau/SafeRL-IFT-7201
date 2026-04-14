@@ -70,6 +70,7 @@ def get_moving_averages_with_x(data, window=100):
     Args:
         data (dict): Dictionnaire contenant les métriques par épisode avec les clés :
             - "episode_rewards"
+            - "episode_costs"
             - "episode_lengths"
             - "episode_lengths_given_success"
             - "episode_falls"
@@ -84,6 +85,7 @@ def get_moving_averages_with_x(data, window=100):
             x_raw (np.ndarray): Index des épisodes (1 à N)
             x_ma (np.ndarray): Index aligné avec les moyennes mobiles
             reward_mean (np.ndarray): Moyenne mobile des récompenses
+            cost_mean (np.ndarray): Moyenne mobile des coûts
             length_mean (np.ndarray): Moyenne mobile des longueurs d’épisodes
             length_given_success_mean (np.ndarray): Moyenne mobile des longueurs conditionnelles au succès
             fall_rate (np.ndarray): Moyenne mobile du taux de chute
@@ -93,6 +95,7 @@ def get_moving_averages_with_x(data, window=100):
             cum_falls (np.ndarray): Nombre cumulatif de chutes (non lissé)
     """
     rewards = np.array(data["episode_rewards"])
+    costs = np.array(data["episode_costs"])
     lengths = np.array(data["episode_lengths"])
     episode_lengths_given_success = np.array(data["episode_lengths_given_success"])
     falls = np.array(data["episode_falls"])
@@ -103,6 +106,7 @@ def get_moving_averages_with_x(data, window=100):
     #timesteps = np.array(data["episode_end_timesteps"])
 
     reward_mean = moving_average(rewards, window)
+    cost_mean = moving_average(costs, window)
     length_mean = moving_average(lengths, window)
     length_given_success_mean = moving_average(episode_lengths_given_success, window)
     fall_rate = moving_average(falls, window)
@@ -117,7 +121,7 @@ def get_moving_averages_with_x(data, window=100):
     else:
         x_ma = np.arange(window, len(rewards) + 1)
 
-    return x_raw, x_ma, reward_mean, length_mean, length_given_success_mean,fall_rate, success_rate, timeout_rate, risk_mean, cum_falls
+    return x_raw, x_ma, reward_mean, cost_mean, length_mean, length_given_success_mean,fall_rate, success_rate, timeout_rate, risk_mean, cum_falls
 
 def average_smoothed_metrics_across_runs(callbacks_data_list, window=30):
     """
@@ -129,14 +133,14 @@ def average_smoothed_metrics_across_runs(callbacks_data_list, window=30):
 
     Returns:
         dict: Métriques lissées et moyennées, avec les clés:
-              x_ma, reward_mean, length_mean, fall_rate, timeout_rate, risk_mean,
+              x_ma, reward_mean, cost_mean, length_mean, fall_rate, timeout_rate, risk_mean,
               x_raw, cum_falls
     """
     smoothed, raw_cf = [], []
     for data in callbacks_data_list:
-        x_raw, x_ma, rew, length, length_given_success, falls, success, timeout, risk, cf = \
+        x_raw, x_ma, rew, cost, length, length_given_success, falls, success, timeout, risk, cf = \
             get_moving_averages_with_x(data, window=window)
-        smoothed.append((x_ma, rew, length, length_given_success, falls, success, timeout, risk))
+        smoothed.append((x_ma, rew, cost, length, length_given_success, falls, success, timeout, risk))
         raw_cf.append((x_raw, cf))
 
     # Aligner toutes les séries sur la longueur minimale (sécurité si les longueurs diffèrent)
@@ -146,12 +150,13 @@ def average_smoothed_metrics_across_runs(callbacks_data_list, window=30):
     return {
         "x_ma":         smoothed[0][0][:min_ma].astype(int),
         "reward_mean":  np.mean([r[1][:min_ma] for r in smoothed], axis=0),
-        "length_mean":  np.mean([r[2][:min_ma] for r in smoothed], axis=0),
-        "length_given_success_mean": np.nanmean([r[3][:min_ma] for r in smoothed], axis=0),
-        "fall_rate":    np.mean([r[4][:min_ma] for r in smoothed], axis=0),
-        "success_rate": np.mean([r[5][:min_ma] for r in smoothed], axis=0),
-        "timeout_rate": np.mean([r[6][:min_ma] for r in smoothed], axis=0),
-        "risk_mean":    np.mean([r[7][:min_ma] for r in smoothed], axis=0),
+        "cost_mean":  np.mean([r[2][:min_ma] for r in smoothed], axis=0),
+        "length_mean":  np.mean([r[3][:min_ma] for r in smoothed], axis=0),
+        "length_given_success_mean": np.nanmean([r[4][:min_ma] for r in smoothed], axis=0),
+        "fall_rate":    np.mean([r[5][:min_ma] for r in smoothed], axis=0),
+        "success_rate": np.mean([r[6][:min_ma] for r in smoothed], axis=0),
+        "timeout_rate": np.mean([r[7][:min_ma] for r in smoothed], axis=0),
+        "risk_mean":    np.mean([r[8][:min_ma] for r in smoothed], axis=0),
 
         "x_raw":        raw_cf[0][0][:min_raw].astype(int),
         "cum_falls":    np.mean([r[1][:min_raw] for r in raw_cf], axis=0),
@@ -176,11 +181,13 @@ class QLearningMetricsCallback:
         self.verbose = verbose
 
         self.current_reward = 0.0
+        self.current_cost = 0.0
         self.current_length = 0
         self.current_risk = 0
 
         # Listes avec 1 valeur par épisode
         self.episode_rewards = []
+        self.episode_costs = []
         self.episode_lengths = []
         self.episode_lengths_given_success = []
         self.episode_falls = []
@@ -216,6 +223,7 @@ class QLearningMetricsCallback:
             timestep: Numéro du timestep courant
         """
         self.current_reward += reward
+        self.current_cost += info.get("cost", 0)
         self.current_length += 1
         self.current_risk += info.get("risk", 0)
         self.num_timesteps = timestep
@@ -226,6 +234,7 @@ class QLearningMetricsCallback:
             timeout = int(info.get("is_timeout", False))
 
             self.episode_rewards.append(self.current_reward)
+            self.episode_costs.append(self.current_cost)
             self.episode_lengths.append(self.current_length)
             self.episode_lengths_given_success.append(self.current_length if success else np.nan)
             self.episode_risks.append(self.current_risk)
@@ -239,6 +248,7 @@ class QLearningMetricsCallback:
 
             # --- Reset ---
             self.current_reward = 0.0
+            self.current_cost = 0.0
             self.current_length = 0
             self.current_risk = 0
 
@@ -261,11 +271,13 @@ class SB3MetricsCallback(BaseCallback):
         super().__init__(verbose)
 
         self.current_reward = 0.0
+        self.current_cost = 0.0
         self.current_length = 0
-        self.current_risk = 0
+        self.current_risk = 0        
 
         #listes avec 1 valeur par épisode
         self.episode_rewards = []
+        self.episode_costs = []
         self.episode_lengths = []
         self.episode_lengths_given_success = []
         self.episode_falls = []
@@ -283,6 +295,7 @@ class SB3MetricsCallback(BaseCallback):
         info = self.locals["infos"][0]
 
         self.current_reward += reward
+        self.current_cost += info.get("cost", 0)
         self.current_length += 1
         self.current_risk += info.get("risk", 0)
 
@@ -292,6 +305,7 @@ class SB3MetricsCallback(BaseCallback):
             timeout = int(info.get("is_timeout", False))
 
             self.episode_rewards.append(self.current_reward)
+            self.episode_costs.append(self.current_cost)
             self.episode_lengths.append(self.current_length)
             self.episode_lengths_given_success.append(self.current_length if success else np.nan)
             self.episode_risks.append(self.current_risk)
@@ -305,6 +319,7 @@ class SB3MetricsCallback(BaseCallback):
             
             # --- Logs custom TensorBoard ---
             self.logger.record("custom/episode_reward", self.current_reward)
+            self.logger.record("custom/episode_costs", self.current_cost)
             self.logger.record("custom/episode_length", self.current_length)
             self.logger.record("custom/episode_length_given_success", self.current_length if success else np.nan)
             self.logger.record("custom/episode_risk", self.current_risk)
@@ -318,6 +333,7 @@ class SB3MetricsCallback(BaseCallback):
 
             # --- Reset ---
             self.current_reward = 0.0
+            self.current_cost = 0.0
             self.current_length = 0
             self.current_risk = 0            
 
@@ -331,6 +347,7 @@ def save_callback_metrics_npz(callback, filepath):
     np.savez(
         filepath,
         episode_rewards=np.array(callback.episode_rewards),
+        episode_costs=np.array(callback.episode_costs),
         episode_lengths=np.array(callback.episode_lengths),
         episode_lengths_given_success=np.array(callback.episode_lengths_given_success),
         episode_falls=np.array(callback.episode_falls),
@@ -395,6 +412,7 @@ def log_run_metrics_to_tensorboard(callback_data, tensorboard_dir):
 
     for i in range(n):
         logger.record("custom/episode_reward",   float(callback_data["episode_rewards"][i]))
+        logger.record("custom/episode_cost",   float(callback_data["episode_costs"][i]))
         logger.record("custom/episode_length",   float(callback_data["episode_lengths"][i]))
         logger.record("custom/episode_length_given_success", float(callback_data["episode_lengths_given_success"][i]))
         logger.record("custom/episode_risk",     float(callback_data["episode_risks"][i]))
@@ -421,6 +439,7 @@ def log_averaged_metrics_to_tensorboard(averaged_metrics, tensorboard_dir):
     # Métriques lissées, indexées par épisode lissé (x_ma)
     for i, ep in enumerate(averaged_metrics["x_ma"]):
         logger.record("averaged/reward_mean",  float(averaged_metrics["reward_mean"][i]))
+        logger.record("averaged/cost_mean",  float(averaged_metrics["cost_mean"][i]))
         logger.record("averaged/length_mean",  float(averaged_metrics["length_mean"][i]))
         logger.record("averaged/length_given_success_mean", float(averaged_metrics["length_given_success_mean"][i]))
         logger.record("averaged/fall_rate",    float(averaged_metrics["fall_rate"][i]))
@@ -455,6 +474,7 @@ def evaluate_policy_with_metrics(model, env, n_eval_episodes=100, deterministic=
 
     # Initialiser les listes pour accumuler les métriques par épisode
     episode_rewards = []
+    episode_costs = []
     episode_lengths = []
     episode_lengths_given_success = []    
     episode_falls = []
@@ -474,6 +494,7 @@ def evaluate_policy_with_metrics(model, env, n_eval_episodes=100, deterministic=
 
         # Accumulateurs pour cet épisode
         current_reward = 0.0
+        current_cost = 0.0
         current_length = 0
         current_risk = 0.0
 
@@ -489,6 +510,7 @@ def evaluate_policy_with_metrics(model, env, n_eval_episodes=100, deterministic=
             obs, reward, done, truncated, info = env.step(action)
 
             current_reward += reward
+            current_cost += info.get("cost", 0)
             current_length += 1
             current_risk += info.get("risk", 0)
 
@@ -499,6 +521,7 @@ def evaluate_policy_with_metrics(model, env, n_eval_episodes=100, deterministic=
 
         # Enregistrer les métriques de l'épisode
         episode_rewards.append(current_reward)
+        episode_costs.append(current_cost)
         episode_lengths.append(current_length)
         episode_lengths_given_success.append(current_length if success else np.nan)  # NaN pour les épisodes non réussis
         episode_risks.append(current_risk)
@@ -512,6 +535,7 @@ def evaluate_policy_with_metrics(model, env, n_eval_episodes=100, deterministic=
     # Calculer les métriques moyennées sur tous les épisodes
     results = {
         "mean_reward": np.mean(episode_rewards),
+        "mean_cost": np.mean(episode_costs),
         "mean_length": np.mean(episode_lengths),
         "mean_length_given_success": np.nanmean(episode_lengths_given_success),  # Moyenne en ignorant les NaN        
         "mean_risk": np.mean(episode_risks),
