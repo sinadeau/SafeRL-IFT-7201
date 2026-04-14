@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 
 def create_env(
     env_type: str,
-    reward_type: str = "MDP", 
+    reward_type: str = "MDP", #"MDP" ou "CMDP" (Version safe-RL). Pour un CMDP la récompense de tomber dans un trou est de 0 pour dissocier le coût de la fonction de récompense.
     hole_cost: float = 1,
     max_episode_steps: int = 60,
     success_rate: float = 0.9,

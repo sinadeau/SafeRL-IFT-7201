@@ -31,6 +31,7 @@ WINDOW = 100                   # Fenêtre de lissage pour les métriques moyenn�
 N_EVAL_EPISODES = 100  # Nombre d'épisodes par répétition pour l'évaluation finale de la politique apprise
 
 # Paramètres P3O
+P3O_REWARD_TYPE = "CMDP"  # Formulation des rewards pour CMDP. Pour un CMDP la récompense de tomber dans un trou est de 0 pour dissocier le coût de la fonction de récompense.
 P3O_KAPPA = 20            # Kappa utilisé dans la lost de coût pour la politique
 P3O_COST_LIMIT = 1             # Limite de coût cumulatif par épisode autorisée (le d dans: Jc <= d)
 P3O_POLICY = "MlpPolicy"  # Architecture de politique: "MlpPolicy" pour réseaux de neurones
@@ -43,7 +44,9 @@ def train_one_p3o(seed):
     output_dir = f"p3o_{ENV_TYPE}"
     os.makedirs(output_dir, exist_ok=True)
 
-    env = create_env(ENV_TYPE, max_episode_steps=MAX_EPISODE_STEPS,
+    env = create_env(ENV_TYPE, 
+                     reward_type = P3O_REWARD_TYPE,
+                     max_episode_steps=MAX_EPISODE_STEPS,
                      success_rate=SUCCESS_RATE, seed=seed)
     
     # Définition architecturale : 2 couches cachées de 16 neurones chacune, activation ReLU
