@@ -32,7 +32,7 @@ WINDOW = 100                   # Fenêtre de lissage pour les métriques moyenn�
 N_EVAL_EPISODES = 100  # Nombre d'épisodes par répétition pour l'évaluation finale de la politique apprise
 
 # Paramètres PPO
-PPO_LEARNING_RATE = 0.001
+PPO_LEARNING_RATE = 0.0003
 PPO_POLICY = "MlpPolicy"  # Architecture de politique: "MlpPolicy" pour réseaux de neurones
 PPO_VERBOSE = 0           # Niveau de verbosité (1 = afficher les mises à jour)
 

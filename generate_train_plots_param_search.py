@@ -27,7 +27,16 @@ DOSSIERS = [
 ]
 
 #Nom du paramètre que l'on a fait varier
-param_name = "maxsteps"
+#param_name = "maxsteps"
+
+#DOSSIERS = [
+#    "ppo_10x10_custom_lr00005",
+#    "ppo_10x10_custom_lr0003",
+#    "ppo_10x10_custom_lr001",
+#]
+
+#Nom du paramètre que l'on a fait varier
+#param_name = "lr"
 
 # Dossier de sortie pour les figures
 FIGURES_DIR = "Figures"
