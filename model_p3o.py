@@ -237,7 +237,7 @@ class P3O(PPO):
             kappa: Coefficient de pénalité pour les violations de coût
             cost_limit: Limite de coût cumulatif par épisode
             cost_vf_coef: Coefficient pour la loss du critique de coût
-            update_reward_critic_separately: Si True, la perte du critique de récompense est découplée de la loss de l'acteur. 
+            update_reward_critic_separately: Si True, la perte du critique de récompense et la mise à jour de ses paramètres est découplée de la perte et de la mise à jour de l'acteur. 
                 La perte du critique de récompense devient simplement la perte MSE (vf_coef n'est plus utilisé).
             ... (autres paramètres PPO hérités)          
 
