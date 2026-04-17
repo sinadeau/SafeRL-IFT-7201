@@ -200,7 +200,7 @@ class P3O(PPO):
         # [P3O] Paramètres spécifiques à P3O
         kappa: float = 20.0,
         cost_limit: float = 25.0,
-        cost_vf_coef: float = 0.5, #N'est pas utilisé pour l'instant
+        cost_vf_coef: float = 1,
         update_reward_critic_separately: bool = False, #[Option ajoutée]
         # Paramètres PPO hérités
         learning_rate: float | Schedule = 3e-4,
@@ -554,7 +554,7 @@ class P3O(PPO):
                     rollout_data.observations, self.policy.vf_features_extractor
                 )
                 cost_values_pred = self.cost_critic(features).flatten()
-                cost_value_loss = F.mse_loss(rollout_data.cost_returns, cost_values_pred)
+                cost_value_loss = self.cost_vf_coef * F.mse_loss(rollout_data.cost_returns, cost_values_pred)
                 cost_value_losses.append(cost_value_loss.item())
 
                 # === Loss totale: PPO + pénalité de coût P3O ===             
