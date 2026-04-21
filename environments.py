@@ -96,7 +96,7 @@ def create_env(
         - Grille 16x16
         - Trous positionnés aléatoirement avec une densité de 15%
         - Objectif placé dans un coin opposé à la position de départ
-        - reward_schedule = (1, -0.5, -0.01) # (Goal, Hole, Frozen)
+        - reward_schedule = (1, -1, -0.01) # (Goal, Hole, Frozen)
         (pour un CMDP la récompense de tomber dans un trou est de 0 pour le dissocier de la fonction de récompense)
         """
 
