@@ -757,7 +757,7 @@ def plot_policy(env, policy_grid, ax=None, title=None):
     if title is not None:
         ax.set_title(title)
 
-def plot_all_PPO_policies_from_folder(env_type, folder="./ppo_10x10_custom", ncols=2):
+def plot_all_PPO_policies_from_folder(env_type, algo, folder="./ppo_10x10_custom", ncols=5):
     """
     Charge plusieurs modèles PPO depuis un dossier et affiche leurs politiques
     sous forme de grille de figures.
@@ -767,7 +767,8 @@ def plot_all_PPO_policies_from_folder(env_type, folder="./ppo_10x10_custom", nco
     composée de plusieurs sous-graphiques.
 
     Args:
-        env_type: Type d'environnement ("8x8_default", "10x10_custom" ou "16x16_random)
+        env_type: Type d'environnement ("8x8_default", "10x10_custom" ou "16x16_random")
+        algo: (str) nom de l'algo pour annoter le fichier de sortie
         folder (str): Chemin vers le dossier contenant les modèles PPO
         ncols (int): Nombre de colonnes dans la grille de sous-figures
 
@@ -816,7 +817,7 @@ def plot_all_PPO_policies_from_folder(env_type, folder="./ppo_10x10_custom", nco
         ax.axis("off")
 
     plt.tight_layout()
-    plt.savefig(rf".\Figures\PPO_policies_{env_type}.png", dpi=300, bbox_inches='tight')
+    plt.savefig(rf".\Figures\{algo}_policies_{env_type}.png", dpi=300, bbox_inches='tight')
     plt.show()
 
 def plot_all_q_learning_policies_from_folder(env_type, folder="./q_learning_10x10_custom", ncols=2):

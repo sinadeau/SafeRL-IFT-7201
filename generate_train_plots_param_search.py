@@ -6,6 +6,7 @@ la courbe moyenne +- écart-type de chaque algorithme.
 """
 
 import os
+import re
 import glob
 import numpy as np
 import pandas as pd
@@ -17,26 +18,44 @@ from matplotlib.ticker import FuncFormatter
 # Chaque dossier représente un algorithme entraîné sur un environnement donné.
 # Convention de nommage attendue : "{algo}_{environnement}"
 # ===========================================================================
+
+param_name1 = "kappa"  # param principal (tri + axe)
+param_names_extra = ["costvfcoef", "entcoef"]  # autres paramètres optionnels
+
+
 DOSSIERS = [
-    "ppo_10x10_custom_maxsteps60",
-    "ppo_10x10_custom_maxsteps100",
-    "ppo_10x10_custom_maxsteps150",
-    "ppo_16x16_random_maxsteps60",
-    "ppo_16x16_random_maxsteps100",
-    "ppo_16x16_random_maxsteps150"
+    "p3o_8x8_default_kappa0.5",
+    "p3o_8x8_default_kappa0.6",
+    "p3o_8x8_default_kappa0.75",
+    "p3o_10x10_custom_kappa0.4",
+    "p3o_10x10_custom_kappa0.5",
+    "p3o_10x10_custom_kappa0.5_costvfcoef0.5",    
+    "p3o_10x10_custom_kappa0.6",
+    "p3o_16x16_random_kappa0.9",
+    "p3o_16x16_random_kappa1",
+    "p3o_16x16_random_kappa1_entcoef0.05"
 ]
+
+
+#Nom du paramètre que l'on a fait varier
+#param_name1 = "lr"
+#DOSSIERS = [
+#    "ppo_10x10_custom_lr0.0005",
+#    "ppo_10x10_custom_lr0.003",
+#    "ppo_10x10_custom_lr0.01",
+#]
 
 #Nom du paramètre que l'on a fait varier
 #param_name = "maxsteps"
 
 #DOSSIERS = [
-#    "ppo_10x10_custom_lr00005",
-#    "ppo_10x10_custom_lr0003",
-#    "ppo_10x10_custom_lr001",
+#    "ppo_10x10_custom_maxsteps60",
+#    "ppo_10x10_custom_maxsteps100",
+#    "ppo_10x10_custom_maxsteps150",
+#    "ppo_16x16_random_maxsteps60",
+#    "ppo_16x16_random_maxsteps100",
+#    "ppo_16x16_random_maxsteps150"
 #]
-
-#Nom du paramètre que l'on a fait varier
-#param_name = "lr"
 
 # Dossier de sortie pour les figures
 FIGURES_DIR = "Figures"
@@ -44,7 +63,8 @@ FIGURES_DIR = "Figures"
 # Algorithmes connus - utilisés pour extraire le nom d'environnement depuis le nom du dossier
 ALGOS_CONNUS = {
     "q_learning": "Q-learning", 
-    "ppo": "PPO"
+    "ppo": "PPO",
+    "p3o": "P3O"
 }
 
 # Environnements connus - utilisés pour l'affichage dans les titres
@@ -52,6 +72,12 @@ ENVS_CONNUS = {
     "8x8_default": "8x8 par défaut",
     "10x10_custom": "10x10 personnalisé",
     "16x16_random": "16x16 aléatoire",
+}
+
+COST_LIMITS = {
+    "8x8_default": 0.0975,
+    "10x10_custom": 0.05,
+    "16x16_random": 0.25,
 }
 
 # Métriques à tracer.
@@ -63,7 +89,8 @@ ENVS_CONNUS = {
 #                          False -> utiliser x_ma avec moyenne mobile
 METRIQUES = [
     ("Récompense moyenne",         "reward_mean",               "episode_rewards",               False),
-    ("Longueur d'épisode (succès)","length_given_success_mean", "episode_lengths_given_success", False),
+    #("Longueur d'épisode (succès)","length_given_success_mean", "episode_lengths_given_success", False),
+    ("Longueur d'épisode","length_mean", "episode_lengths", False),
     ("Taux de succès",             "success_rate",              "episode_successes",             False),
     ("Taux de chutes",             "fall_rate",                 "episode_falls",                 False),
     ("Risque moyen",               "risk_mean",                 "episode_risks",                 False),
@@ -73,31 +100,41 @@ METRIQUES = [
 # ==================== Fonctions utilitaires ====================
 
 def extraire_infos(nom_dossier: str):
-    """
-    Extrait algo, environnement et param_value
-
-    Exemple :
-    ppo_10x10_custom_maxsteps100 ->
-    ("ppo", "10x10_custom", "100")
-    """
     parties = nom_dossier.split("_")
 
     algo = parties[0]
-    param_value = None
 
-    # détecter le paramètre
+    pattern = re.compile(r"([a-zA-Z]+)([0-9.]+)")
+    params = {}
+
     for p in parties:
-        if p.startswith(param_name):
-            param_value = p.replace(param_name, "")
-            break
+        match = pattern.fullmatch(p)
+        if match:
+            nom, val = match.groups()
+            params[nom] = float(val)
 
-    if param_value is None:
-        raise ValueError(f"{param_name} non trouvé dans {nom_dossier}")
+    # --- param principal ---
+    if param_name1 not in params:
+        raise ValueError(f"{param_name1} non trouvé dans {nom_dossier}")
+    param_value1 = params[param_name1]
 
-    # reconstruire env sans le param
-    env = "_".join([p for p in parties[1:] if not p.startswith(param_name)])
+    # --- params secondaires ---
+    extra_param_values = {
+        name: params[name]
+        for name in param_names_extra
+        if name in params
+    }
 
-    return algo, env, param_value
+    # --- reconstruire env ---
+    env_parts = []
+    for p in parties[1:]:
+        if pattern.fullmatch(p):
+            continue
+        env_parts.append(p)
+
+    env = "_".join(env_parts)
+
+    return algo, env, param_value1, extra_param_values
 
 def extraire_resume_dossier_callbacks(dossier: str):
     """
@@ -108,13 +145,15 @@ def extraire_resume_dossier_callbacks(dossier: str):
             - param_name : valeur du paramètre (ex: maxsteps)
             - une clé par métrique avec la moyenne globale correspondante
     """
-    algo, env, param_value = extraire_infos(dossier)
+    _, env, param_value1, extra_param_values = extraire_infos(dossier)
     _, callbacks = charger_dossier(dossier)
 
     resume = {
         "env": env,
-        param_name: int(param_value),
+        param_name1: param_value1,
     }
+
+    resume.update(extra_param_values)
 
     # Pour chaque métrique définie dans METRIQUES
     for label, _, cle_callback, _ in METRIQUES:
@@ -213,6 +252,7 @@ def tracer_metrique(
     cle_callback: str,
     use_x_raw: bool,
     dossiers_env: list[str],
+    nom_env: str,
 ) -> None:
     """
     Trace une métrique sur l'axe fourni avec tous les algorithmes superposés.
@@ -223,11 +263,11 @@ def tracer_metrique(
 
     dossiers_env = sorted(
         dossiers_env,
-        key=lambda d: int(extraire_infos(d)[2])  # tri par param_value
+        key=lambda d: float(extraire_infos(d)[2])  # tri par param_value
     )
 
     for idx, dossier in enumerate(dossiers_env):
-        algo, _, param_value = extraire_infos(dossier)
+        _, _, param_value1, extra_param_values = extraire_infos(dossier)
         averaged, callbacks = charger_dossier(dossier)
 
         # Sélectionner l'axe X et la série moyenne selon le type de métrique
@@ -250,15 +290,37 @@ def tracer_metrique(
 
         couleur = couleurs[idx % len(couleurs)]
 
-        label = f"{ALGOS_CONNUS[algo]} - {param_name} = {param_value}"
+        #label = f"{ALGOS_CONNUS[algo]} - {param_name1} = {param_value1}"
+        label = f"{param_name1} = {param_value1}"
+
+        if extra_param_values:
+            extras_str = ", ".join([f"{k}={v}" for k, v in extra_param_values.items()])
+            label += f"\n({extras_str})"
+
         ax.plot(x, y_moy, label=label, color=couleur, linewidth=1.5)
-        ax.fill_between(x, y_moy - std, y_moy + std, alpha=0.2, color=couleur)
+        ax.fill_between(x, y_moy - std, y_moy + std, alpha=0.2, color=couleur)        
+
+    if cle_averaged == "fall_rate":
+        if nom_env in COST_LIMITS:
+            cost_limit = COST_LIMITS[nom_env]
+            ax.axhline(
+                y=cost_limit,
+                color="red",
+                linestyle="--",
+                linewidth=1.8,
+                label=f"limite de coût = {cost_limit}"
+            )
 
     ax.set_xlabel("Épisode ($\\times 10^3$)")
     ax.set_ylabel(label)
     ax.set_title(label)
     ax.legend()
     ax.grid(True, alpha=0.3)
+
+    # Limiter l'axe Y uniquement pour le risque moyen
+    if cle_averaged == "risk_mean":
+        ax.set_ylim(0, 40)
+
     # Formater l'axe des x en milliers
     ax.xaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{int(x/1000)}'))
 
@@ -272,7 +334,7 @@ def main():
         if not os.path.isdir(dossier):
             print(f"[AVERTISSEMENT] Dossier introuvable, ignoré : {dossier}")
             continue
-        _, env, param_value = extraire_infos(dossier)
+        _, env, _, _ = extraire_infos(dossier)
         if env not in ENVS_CONNUS:
             print(f"[AVERTISSEMENT] Environnement inconnu dans le nom du dossier, ignoré : {dossier}")
             continue
@@ -286,7 +348,14 @@ def main():
     num_metrics = len(METRIQUES)
     num_envs = len(groupes_env)
     height = max(4 + num_metrics * 1.5, 10)  # Hauteur minimale de 10, ajouter 1.5 par métrique
-    fig, axes = plt.subplots(num_metrics, num_envs, figsize=(4 * num_envs, height), sharex='col', sharey='row')
+    #fig, axes = plt.subplots(num_metrics, num_envs, figsize=(4 * num_envs, height), sharex='col', sharey='row')
+    fig, axes = plt.subplots(
+        num_metrics,
+        num_envs,
+        figsize=(5 * num_envs, 3 * num_metrics),
+        sharex='col',
+        sharey='row'
+    )
     
     # Gérer le cas où il y a seulement 1 métrique ou 1 environnement (les axes pourraient ne pas être 2D)
     if num_metrics == 1 or num_envs == 1:
@@ -300,7 +369,7 @@ def main():
             try:
                 ax = axes[metric_idx, env_idx]
                 tracer_metrique(
-                    ax, label, cle_averaged, cle_callback, use_x_raw, dossiers_env
+                    ax, label, cle_averaged, cle_callback, use_x_raw, dossiers_env, nom_env
                 )
                 # Définir le titre de colonne uniquement pour la première ligne
                 if metric_idx == 0:
@@ -314,12 +383,12 @@ def main():
                 else:
                     ax.set_ylabel("")
                 
-                print(f"  [{metric_idx+1}/{num_metrics}][{env_idx+1}/{num_envs}] {label} - {nom_env} - {param_name} - {param_value} - OK")
+                print(f"  [{metric_idx+1}/{num_metrics}][{env_idx+1}/{num_envs}] {label} - {nom_env} - OK")
             except Exception as e:
                 print(f"  [ERREUR] {label} - {nom_env} : {e}")
 
     fig.tight_layout()
-    nom_fichier = f"grid_search_{param_name}.png"
+    nom_fichier = f"grid_search_{param_name1}.png"
     chemin_sortie = os.path.join(FIGURES_DIR, nom_fichier)
     fig.savefig(chemin_sortie, dpi=150, bbox_inches="tight")
     plt.close(fig)
@@ -340,10 +409,10 @@ def main():
     df = pd.DataFrame(lignes)
 
     # trier pour que ce soit lisible
-    df = df.sort_values(by=["env", param_name])
+    df = df.sort_values(by=["env", param_name1])
 
     # sauvegarde CSV
-    chemin_csv = os.path.join(FIGURES_DIR, f"averaged_training_metrics_grid_search_{param_name}.csv")
+    chemin_csv = os.path.join(FIGURES_DIR, f"grid_search_{param_name1}_averaged_training_metrics.csv")
     df.to_csv(chemin_csv, index=False)
 
     print("\nTableau résumé :")
