@@ -23,6 +23,9 @@ DOSSIERS = [
     "ppo_8x8_default",
     "ppo_10x10_custom",
     "ppo_16x16_random",
+    "p3o_8x8_default",
+    "p3o_10x10_custom",
+    "p3o_16x16_random",
 ]
 
 # Dossier de sortie pour les figures
@@ -31,7 +34,8 @@ FIGURES_DIR = "Figures"
 # Algorithmes connus - utilisés pour extraire le nom d'environnement depuis le nom du dossier
 ALGOS_CONNUS = {
     "q_learning": "Q-learning", 
-    "ppo": "PPO"
+    "ppo": "PPO",
+    "p3o": "P3O",
 }
 
 # Environnements connus - utilisés pour l'affichage dans les titres
