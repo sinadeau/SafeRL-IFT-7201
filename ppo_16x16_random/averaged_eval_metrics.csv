@@ -1,9 +1,0 @@
-metric,mean,std
-mean_reward,-0.51562,0.019452951789724258
-mean_length,2.562,1.9452951789724187
-mean_length_given_success,,
-mean_risk,2.2039999999999997,1.8040891823238057
-fall_rate,1.0,0.0
-success_rate,0.0,0.0
-timeout_rate,0.0,0.0
-total_falls,100.0,0.0

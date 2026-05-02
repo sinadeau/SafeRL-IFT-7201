@@ -25,7 +25,11 @@ DOSSIERS = [
     "ppo_16x16_random",
     "p3o_8x8_default",
     "p3o_10x10_custom",
+<<<<<<< HEAD
     "p3o_16x16_random"
+=======
+    "p3o_16x16_random",
+>>>>>>> 5a19a608d2cea04d6d9d8bcb151ab95e1051b7dc
 ]
 
 #Test avec reward de -1 pour trou pour PPO
@@ -41,7 +45,11 @@ FIGURES_DIR = "Figures"
 ALGOS_CONNUS = {
     "q_learning": "Q-learning", 
     "ppo": "PPO",
+<<<<<<< HEAD
     "p3o": "P3O"
+=======
+    "p3o": "P3O",
+>>>>>>> 5a19a608d2cea04d6d9d8bcb151ab95e1051b7dc
 }
 
 # Environnements connus - utilisés pour l'affichage dans les titres

@@ -20,7 +20,7 @@ DEVICE = torch.device('cpu')
 
 # Paramètres de l'expérience (entraînement et environnement)
 SUCCESS_RATE = 9 / 10.0        # Probabilité de ne pas glisser (slippery env)
-MAX_EPISODE_STEPS = 100         # Durée maximale d'un épisode (nombre de pas)
+MAX_EPISODE_STEPS = 100        # Durée maximale d'un épisode (nombre de pas)
 TOTAL_EPISODES = 150_000       # Nombre total d'épisodes par répétition
 ENV_TYPE = "16x16_random"      # Type d'environnement: "8x8_default", "10x10_custom" ou "16x16_random"
 BASE_SEED = 40                 # Graine de base ; la répétition i utilise BASE_SEED + i
@@ -32,8 +32,9 @@ N_EVAL_EPISODES = 100  # Nombre d'épisodes par répétition pour l'évaluation 
 
 # Paramètres P3O
 P3O_REWARD_TYPE = "CMDP"  # Formulation des rewards pour CMDP. Pour un CMDP la récompense de tomber dans un trou est de 0 pour dissocier le coût de la fonction de récompense.
-P3O_KAPPA = 1            # Kappa utilisé dans la lost de coût pour la politique
-P3O_COST_LIMIT = 0.25             # Limite de coût cumulatif par épisode autorisée (le d dans: Jc <= d)
+P3O_KAPPA = 1             # Kappa utilisé dans la lost de coût pour la politique
+P3O_COST_LIMIT = 0.25     # Limite de coût cumulatif par épisode autorisée (le d dans: Jc <= d)
+COST_VF_COEF = 1          # Coefficient de la fonction de valeur de coût
 P3O_ENT_COEF = 0.05       # Coefficient pour l'entropy dans la perte pour la politique
 P3O_POLICY = "MlpPolicy"  # Architecture de politique: "MlpPolicy" pour réseaux de neurones
 P3O_VERBOSE = 0           # Niveau de verbosité (1 = afficher les mises à jour)
@@ -58,6 +59,7 @@ def train_one_p3o(seed):
                 tensorboard_log=f"./{output_dir}/tensorboard/", seed=seed, policy_kwargs=policy_kwargs,
                 kappa = P3O_KAPPA,
                 cost_limit = P3O_COST_LIMIT,
+                cost_vf_coef=COST_VF_COEF,
                 ent_coef = P3O_ENT_COEF,
                 device=DEVICE)
 
