@@ -201,7 +201,6 @@ class P3O(PPO):
         kappa: float = 20.0,
         cost_limit: float = 25.0,
         cost_vf_coef: float = 1,
-        update_reward_critic_separately: bool = False, #[Option ajoutée]
         # Paramètres PPO hérités
         learning_rate: float | Schedule = 3e-4,
         n_steps: int = 2048,
@@ -237,8 +236,6 @@ class P3O(PPO):
             kappa: Coefficient de pénalité pour les violations de coût
             cost_limit: Limite de coût cumulatif par épisode
             cost_vf_coef: Coefficient pour la loss du critique de coût
-            update_reward_critic_separately: Si True, la perte du critique de récompense et la mise à jour de ses paramètres est découplée de la perte et de la mise à jour de l'acteur. 
-                La perte du critique de récompense devient simplement la perte MSE (vf_coef n'est plus utilisé).
             ... (autres paramètres PPO hérités)          
 
         """
@@ -246,7 +243,6 @@ class P3O(PPO):
         self.kappa = kappa
         self.cost_limit = cost_limit
         self.cost_vf_coef = cost_vf_coef
-        self.update_reward_critic_separately = update_reward_critic_separately #[Option ajoutée]
 
         super().__init__(
             policy=policy,
@@ -297,7 +293,8 @@ class P3O(PPO):
             activation_fn=self.policy.activation_fn,
         ).to(self.device)
 
-        # Ici l'optimiseur ne mettra pas à jour les paramètres du feature_extractor car il ne contient aucun paramètres à entraîner (one-hot vector et flatten)
+        # Ici l'optimiseur ne mettra pas à jour les paramètres du feature_extractor car le réseau cost_critic est indépendant.
+        # De plus, dans notre cas, le feature extractor ne contient aucun paramètres à entraîner (one-hot vector et flatten)
         self.cost_critic_optimizer = self.policy.optimizer_class(
             self.cost_critic.parameters(),
             lr=self.learning_rate,
@@ -307,21 +304,6 @@ class P3O(PPO):
         # [P3O] Suivi du coût moyen par épisode pour le calcul de Jc
         self._ep_cost_buffer: deque[float] = deque(maxlen=self._stats_window_size)
         self._current_ep_costs = np.zeros(self.n_envs)
-
-        # #[Option ajoutée]: si update_reward_critic_separately, créer un optimizeur pour le critique de récompense et pour l'acteur
-        # Ici encore une fois, il n'y a pas de réseau feature_extractor
-        if self.update_reward_critic_separately:            
-            self.value_optimizer = self.policy.optimizer_class(
-                self.policy.mlp_extractor.value_net.parameters(),
-                lr=self.learning_rate,
-                **self.policy.optimizer_kwargs,
-            )
-
-            self.actor_optimizer = self.policy.optimizer_class(
-                self.policy.mlp_extractor.policy_net.parameters(),
-                lr=self.learning_rate,
-                **self.policy.optimizer_kwargs,
-            )
 
     def _predict_cost_values(self, obs: th.Tensor) -> th.Tensor:
         """[P3O] Prédit V_c(s) en réutilisant l'extracteur de features de la politique."""
@@ -459,17 +441,11 @@ class P3O(PPO):
         self._update_learning_rate(self.policy.optimizer)    
         lr = self.policy.optimizer.param_groups[0]["lr"]
 
-        optimizers = [self.cost_critic_optimizer] # [P3O] Mettre à jour le learning rate du critique de coût
-        if self.update_reward_critic_separately: #[Option ajoutée]
-            optimizers += [self.actor_optimizer, self.value_optimizer]
-
+        # [P3O] Mettre à jour le learning rate du critique de coût
+        optimizers = [self.cost_critic_optimizer]
         for opt in optimizers:
             for param_group in opt.param_groups:
                 param_group["lr"] = lr
-
-        # [P3O] Mettre à jour le learning rate du critique de coût
-        #for param_group in self.cost_critic_optimizer.param_groups:
-        #    param_group["lr"] = self.policy.optimizer.param_groups[0]["lr"]
 
         clip_range = self.clip_range(self._current_progress_remaining)
         # Optional: clip range for the value function (non utilisé et non implémenté pour la fonction de coût)
@@ -498,13 +474,6 @@ class P3O(PPO):
                 actions = rollout_data.actions
                 if isinstance(self.action_space, spaces.Discrete):
                     actions = rollout_data.actions.long().flatten()
-
-                #if self.update_reward_critic_separately: #[Option ajoutée]
-                #    #forward pass séparées
-                #    values = self.policy.predict_values(rollout_data.observations)
-                #    _, log_prob, entropy = self.policy.evaluate_actions(rollout_data.observations, actions)
-                #else:
-                #    values, log_prob, entropy = self.policy.evaluate_actions(rollout_data.observations, actions)
                 
                 values, log_prob, entropy = self.policy.evaluate_actions(rollout_data.observations, actions)
                 values = values.flatten()
@@ -557,18 +526,12 @@ class P3O(PPO):
                 cost_value_loss = self.cost_vf_coef * F.mse_loss(rollout_data.cost_returns, cost_values_pred)
                 cost_value_losses.append(cost_value_loss.item())
 
-                # === Loss totale: PPO + pénalité de coût P3O ===             
-                if self.update_reward_critic_separately: #[Option ajoutée]
-                    #loss de la politique découplée du loss du critique de récompense (similaire à l'implémentation omnisafe)
-                    actor_loss = (policy_loss # Politique
-                        + self.ent_coef * entropy_loss # Politique
-                        + cost_loss) # [P3O] Politique
-                else:
-                    # Critique de récompense updaté en même temps que l'acteur avec un gradient pondéré (vf_coef) et un optimizer partagé (façon SB3)
-                    loss = (policy_loss # Politique
-                        + self.ent_coef * entropy_loss # Politique
-                        + cost_loss # [P3O] Politique
-                        + self.vf_coef * value_loss) # Critique de récompense
+                # === Loss totale: PPO + pénalité de coût P3O === 
+                # Critique de récompense updaté en même temps que l'acteur avec un gradient pondéré (vf_coef) et un optimizer partagé (façon SB3)
+                loss = (policy_loss # Politique
+                    + self.ent_coef * entropy_loss # Politique
+                    + cost_loss # [P3O] Politique
+                    + self.vf_coef * value_loss) # Critique de récompense
 
                 # Divergence KL approximative pour arrêt anticipé
                 with th.no_grad():
@@ -582,27 +545,12 @@ class P3O(PPO):
                         print(f"Arrêt anticipé à l'époque {epoch} (KL: {approx_kl_div:.2f})")
                     break
                 
-                # Mise à jour des paramètres
-                if self.update_reward_critic_separately: #[Option ajoutée]
-
-                    # Mise à jour de l'acteur
-                    self.actor_optimizer.zero_grad()
-                    actor_loss.backward()
-                    th.nn.utils.clip_grad_norm_(self.policy.mlp_extractor.policy_net.parameters(), self.max_grad_norm)
-                    self.actor_optimizer.step()
-
-                    #Mise à jour du critique de récompense
-                    self.value_optimizer.zero_grad()
-                    value_loss.backward()
-                    th.nn.utils.clip_grad_norm_(self.policy.mlp_extractor.value_net.parameters(), self.max_grad_norm)
-                    self.value_optimizer.step()
-                    
-                else:
-                    # Mise à jour de la politique et du critique de récompense dans une même étape
-                    self.policy.optimizer.zero_grad()
-                    loss.backward()
-                    th.nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
-                    self.policy.optimizer.step()
+                # Mise à jour des paramètres                
+                # Mise à jour de la politique et du critique de récompense dans une même étape
+                self.policy.optimizer.zero_grad()
+                loss.backward()
+                th.nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
+                self.policy.optimizer.step()
 
                 # [P3O] Mise à jour séparée du critique de coût
                 self.cost_critic_optimizer.zero_grad()
@@ -624,12 +572,7 @@ class P3O(PPO):
         self.logger.record("train/value_loss", np.mean(value_losses))
         self.logger.record("train/approx_kl", np.mean(approx_kl_divs))
         self.logger.record("train/clip_fraction", np.mean(clip_fractions))
-
-        if self.update_reward_critic_separately: #[Option ajoutée]
-            self.logger.record("train/actor_loss", actor_loss.item())
-        else:
-            self.logger.record("train/loss", loss.item())
-
+        self.logger.record("train/loss", loss.item())
         self.logger.record("train/explained_variance", explained_var)
         if hasattr(self.policy, "log_std"):
             self.logger.record("train/std", th.exp(self.policy.log_std).mean().item())
