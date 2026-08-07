@@ -28,6 +28,12 @@ DOSSIERS = [
     "p3o_16x16_random",
 ]
 
+#Test avec reward de -1 pour trou pour PPO
+#DOSSIERS = [    
+#    "ppo_10x10_custom",
+#    "p3o_10x10_custom"
+#]
+
 # Dossier de sortie pour les figures
 FIGURES_DIR = "Figures"
 
@@ -45,6 +51,12 @@ ENVS_CONNUS = {
     "16x16_random": "16x16 aléatoire",
 }
 
+COST_LIMITS = {
+    "8x8_default": 0.0975,
+    "10x10_custom": 0.05,
+    "16x16_random": 0.25,
+}
+
 # Métriques à tracer.
 # Chaque entrée : (label_affichage, clé_averaged_metrics, clé_callback, use_x_raw)
 #   - label_affichage    : titre de l'axe Y et du graphique
@@ -55,6 +67,7 @@ ENVS_CONNUS = {
 METRIQUES = [
     ("Récompense moyenne",         "reward_mean",               "episode_rewards",               False),
     ("Longueur d'épisode (succès)","length_given_success_mean", "episode_lengths_given_success", False),
+    #("Longueur d'épisode","length_mean", "episode_lengths", False),
     ("Taux de succès",             "success_rate",              "episode_successes",             False),
     ("Taux de chutes",             "fall_rate",                 "episode_falls",                 False),
     ("Risque moyen",               "risk_mean",                 "episode_risks",                 False),
@@ -155,6 +168,7 @@ def tracer_metrique(
     cle_callback: str,
     use_x_raw: bool,
     dossiers_env: list[str],
+    nom_env: str,
 ) -> None:
     """
     Trace une métrique sur l'axe fourni avec tous les algorithmes superposés.
@@ -189,11 +203,27 @@ def tracer_metrique(
         ax.plot(x, y_moy, label=ALGOS_CONNUS[algo], color=couleur, linewidth=1.5)
         ax.fill_between(x, y_moy - std, y_moy + std, alpha=0.2, color=couleur)
 
+    if cle_averaged == "fall_rate":
+        if nom_env in COST_LIMITS:
+            cost_limit = COST_LIMITS[nom_env]
+            ax.axhline(
+                y=cost_limit,
+                color="red",
+                linestyle="--",
+                linewidth=1.8,
+                label=f"limite de coût = {cost_limit}"
+            )
+
     ax.set_xlabel("Épisode ($\\times 10^3$)")
     ax.set_ylabel(label)
     ax.set_title(label)
     ax.legend()
     ax.grid(True, alpha=0.3)
+
+    # Limiter l'axe Y uniquement pour le risque moyen
+    if cle_averaged == "risk_mean":
+        ax.set_ylim(0, 40)
+
     # Formater l'axe des x en milliers
     ax.xaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{int(x/1000)}'))
 
@@ -235,7 +265,7 @@ def main():
             try:
                 ax = axes[metric_idx, env_idx]
                 tracer_metrique(
-                    ax, label, cle_averaged, cle_callback, use_x_raw, dossiers_env
+                    ax, label, cle_averaged, cle_callback, use_x_raw, dossiers_env, nom_env
                 )
                 # Définir le titre de colonne uniquement pour la première ligne
                 if metric_idx == 0:

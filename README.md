@@ -6,21 +6,17 @@
 
 ```
 SafeRL-IFT-7201/
-├── environments.py                 # Définition des environnements FrozenLake encapsulés
-├── utils.py                        # Fonctions utilitaires
-├── train_ppo.py                    # Script d'entraînement pour PPO
-├── train_q_learning.py             # Script d'entraînement pour Q-learning
-├── generate_train_plots.py         # Script pour générer les graphiques d'entraînement
-├── Visualize_results.ipynb         # Notebook pour visualiser les résultats
-├── pyproject.toml                  # Configuration des dépendances (utilise `uv`)
-├── README.md                       # Ce fichier
-├── Figures/                        # Dossier contenant les figures générées
-├── ppo_8x8_default/                # Résultats d'entraînement PPO (grille 8x8 par défaut)
-├── ppo_10x10_custom/               # Résultats d'entraînement PPO (grille 10x10 personnalisée)
-├── ppo_16x16_random/               # Résultats d'entraînement PPO (grille 16x16 aléatoire)
-├── q_learning_8x8_default/         # Résultats d'entraînement Q-learning (grille 8x8 par défaut)
-├── q_learning_10x10_custom/        # Résultats d'entraînement Q-learning (grille 10x10 personnalisée)
-└── q_learning_16x16_random/        # Résultats d'entraînement Q-learning (grille 16x16 aléatoire)
+├── environments.py                             # Définition des environnements FrozenLake encapsulés
+├── utils.py                                    # Fonctions utilitaires
+├── train_ppo.py                                # Script d'entraînement pour PPO
+├── train_q_learning.py                         # Script d'entraînement pour Q-learning
+├── train_p3o.py                                # Script d'entraînement pour P3O
+├── model_p3o.py                                # Implémentation de l'algorithme P3O (Penalized Proximal Policy Optimization) basé sur l'architecture de stable-baselines3.
+├── generate_train_plots.py                     # Script pour générer les graphiques d'entraînement
+├── generate_train_plots_param_search.py        # Script pour générer les graphiques de recherche d'hyperparamètres
+├── Visualize_environments_and_policies.ipynb   # Notebook pour visualiser les cas d'études et politiques apprises
+├── pyproject.toml                              # Configuration des dépendances (utilise `uv`)
+├── README.md                                   # Ce fichier
 ```
 
 ## Installation des dépendances
@@ -39,10 +35,11 @@ uv sync
 
 ## Exécution
 
-### Entraîner un modèle PPO / Q-learning
+### Entraîner un modèle PPO / Q-learning / P3O
 ```bash
 uv run train_ppo.py
 uv run train_q_learning.py
+uv run train_p3o.py
 ```
 
 ### Inspecter les logs tensorboard
