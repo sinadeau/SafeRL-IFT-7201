@@ -10,7 +10,7 @@ We implemented P3O within the Stable-Baselines3 framework, drawing inspiration f
 
 The figure below shows risk maps for the three case studies. S = starting state; G = goal; H = hole. The remaining cells indicate the risk level, defined as twice the number of holes adjacent to the current cell. The third case study shows one of the ten randomly generated 16 × 16 environments.
 
-![alt text](image.png)
+![alt text](case_studies.png)
 
 For more details and results, see `FINAL_REPORT_fr.pdf`.
 
