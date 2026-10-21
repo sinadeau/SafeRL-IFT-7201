@@ -28,7 +28,8 @@ SafeRL-IFT-7201/
 ├── generate_train_plots_param_search.py        # Script for generating hyperparameter search plots
 ├── Visualize_environments_and_policies.ipynb   # Notebook for visualizing the case studies and learned policies
 ├── pyproject.toml                              # Dependency configuration (uses `uv`)
-├── FINAL_REPORT_fr.pdf                             # Final project report
+├── FINAL_REPORT_fr.pdf                         # Final project report
+├── case_studies.png                            # Figure showing the three case studies
 ├── README.md                                   # This file
 ```
 
